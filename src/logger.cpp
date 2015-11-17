@@ -316,18 +316,6 @@ void logger::run()
             );
         }
 
-        // CPU-friendly spin for 250us
-        if (m_queue.empty()) {
-            time_val deadline(rel_time(0, 250));
-            while (m_queue.empty()) {
-                if (m_abort)
-                    goto DONE;
-                if (now_utc() > deadline)
-                    break;
-                sched_yield();
-            }
-        }
-
         // Get all pending items from the queue
         for (auto* item = m_queue.pop_all(), *next=item; item; item = next) {
             next = item->next();
@@ -495,6 +483,11 @@ void logger::dolog_msg(const logger::msg& a_msg) {
                 buf.sprint(sfx, qs);
                 m_sig_slot[level_to_signal_slot(a_msg.level())](
                     on_msg_delegate_t::invoker_type(a_msg, buf.str(), buf.size()));
+
+                if(a_msg.level() == LEVEL_FATAL)
+                {
+                    dofatal_log(buf.str());
+                }
                 break;
             }
         }
@@ -503,6 +496,36 @@ void logger::dolog_msg(const logger::msg& a_msg) {
             m_error(e.what());
         else
             throw;
+    }
+}
+
+void logger::dofatal_log(char *buf)
+{
+    // Expecting a Rethrowing signal string of
+    // this format
+    // ****** RETHROWING SIGNAL <SignalName> (signal number)
+
+    int signum = 0;
+    const char *search_string = "RETHROWING SIGNAL";
+    char *signo_str = strstr(buf, search_string);
+
+    if(signo_str)
+    {
+        signo_str+=strlen(search_string);
+        if(signo_str)
+        {
+            signo_str = strstr(signo_str, "(");
+            if(signo_str)
+            {
+                signo_str++;
+                signum = atoi(signo_str);
+            }
+        }
+
+        if(signum)
+        {
+            detail::exit_with_default_sighandler(signum);
+        }
     }
 }
 

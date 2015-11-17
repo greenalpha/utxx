@@ -346,7 +346,9 @@ struct logger : boost::noncopyable {
 
         template <class T>
         helper operator<< (T&& a) {
-            return helper(this) << a;
+            char thread_name[64] = {0};
+            pthread_getname_np(pthread_self(), thread_name, sizeof(thread_name));
+            return helper(this) << thread_name << ": " << a;
         }
 
         msg_streamer& operator<<(msg_streamer& (*Manipulator)(msg_streamer&)) {
@@ -426,6 +428,8 @@ private:
     void dolog_msg(const msg& a_msg);
 
     void run();
+
+    void dofatal_log(char *buf);
 
     template<typename Fun>
     bool dolog(log_level   a_ll, const std::string& a_cat, const Fun& a_fun,

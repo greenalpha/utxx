@@ -39,6 +39,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 #include <utxx/logger.hpp>
 #include <utxx/logger/logger_crash_handler.hpp>
 
+#include <sys/syscall.h>
 #include <csignal>
 #include <cstring>
 
@@ -104,7 +105,7 @@ namespace {
         char** msg  = backtrace_symbols(dump, size); // overwrite sigaction with caller's address
 
         oss << "Received fatal signal: " << signal_name(a_signo)
-            << " (" << a_signo << ")\n"  << "\tPID: " << getpid() << std::endl;
+            << " (" << a_signo << ")\n"  << "\tPID: " << syscall(SYS_gettid) << std::endl;
 
         // dump stack: skip first frame, since that is here
         for(size_t idx = 1; idx < size && msg != nullptr; ++idx)
@@ -153,6 +154,11 @@ namespace {
             "\n\n***** FATAL TRIGGER RECEIVED ******* \n"
             "%s\n\n***** RETHROWING SIGNAL %s (%d)\n",
             oss.str().c_str(), signal_name(a_signo), a_signo);
+
+        while(true)
+        {
+            ::usleep(10000);
+        }
     }
 
 } // end anonymous namespace
@@ -195,7 +201,6 @@ namespace detail {
     }
 
 } // namespace detail
-
 
 void install_sighandler(bool a_install)
 {
