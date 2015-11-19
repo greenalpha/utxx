@@ -503,30 +503,25 @@ void logger::dofatal_log(char *buf)
 {
     // Expecting a Rethrowing signal string of
     // this format
-    // ****** RETHROWING SIGNAL <SignalName> (signal number)
+    // (signal number)
 
-    int signum = 0;
-    const char *search_string = "RETHROWING SIGNAL";
-    char *signo_str = strstr(buf, search_string);
+    int signum = 6; //DEFAULT SIGNAL SIGABRT
+    char *signo_str = strstr(buf, "(");
 
     if(signo_str)
     {
-        signo_str+=strlen(search_string);
-        if(signo_str)
-        {
-            signo_str = strstr(signo_str, "(");
-            if(signo_str)
-            {
-                signo_str++;
-                signum = atoi(signo_str);
-            }
-        }
+        signo_str++;
+        signum = atoi(signo_str);
 
         if(signum)
         {
+            std::cerr << "logger exiting after receiving fatal event "<< signum << std::endl;
             detail::exit_with_default_sighandler(signum);
+            return;
         }
     }
+    std::cerr << "logger exiting from unknown fatal event" << signum << std::endl;
+    detail::exit_with_default_sighandler(9);
 }
 
 void logger::delete_impl(const std::string& a_name)
