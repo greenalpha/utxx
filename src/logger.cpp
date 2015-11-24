@@ -231,6 +231,7 @@ void logger::init(const config_tree& a_cfg)
         long timeout_ms  = a_cfg.get<int>        ("logger.wait-timeout-ms", 2000);
         m_silent_finish  = a_cfg.get<bool>       ("logger.silent-finish",  false);
         m_wait_timeout   = timespec{timeout_ms / 1000, timeout_ms % 1000 * 1000000L};
+        m_use_sched_yield= a_cfg.get<bool>       ("logger.use-sched-yield", true);
 
         if ((int)m_timestamp_type < 0)
             throw std::runtime_error("Invalid timestamp type: " + ts);
@@ -314,6 +315,20 @@ void logger::run()
                  event_val, m_event.value(), m_abort,
                  m_queue.empty() ? "empty" : "data")
             );
+        }
+
+        // When running with maximum priority, occasionally excessive use of
+        // sched_yield may use to system slowdown, so this option is
+        // configurable by m_use_sched_yield:
+        if (m_queue.empty() && m_use_sched_yield) {
+            time_val deadline(rel_time(0, 250));
+            while (m_queue.empty()) {
+                if (m_abort)
+                    goto DONE;
+                if (now_utc() > deadline)
+                    break;
+                sched_yield();
+            }
         }
 
         // Get all pending items from the queue
