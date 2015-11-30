@@ -24,7 +24,11 @@ UTXX_SRCS = \
     timestamp.cpp \
     url.cpp \
     variant.cpp \
-    verbosity.cpp
+    verbosity.cpp \
+    SpookyHashV2.cpp \
+    SpookyHashV1.cpp \
+    FunctionalExcept.cpp \
+    FollyFutex.cpp 
 
 THRIFT 				= 
 if Ix86
@@ -57,6 +61,9 @@ nobase_include_HEADERS = \
             $(foreach d, \
                 $(shell find ${top_srcdir}/include/@PACKAGE@ -type d -print | xargs), \
             $(wildcard $(d)/*.?pp)) \
+            $(foreach d, \
+                $(shell find ${top_srcdir}/include/folly -type d -print | xargs), \
+            $(wildcard $(d)/*.h)) \
             ${top_srcdir}/include/@PACKAGE@/config.h)
 
 nodist_libutxx_la_SOURCES = ${top_srcdir}/config.h
