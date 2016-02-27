@@ -29,8 +29,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 ***** END LICENSE BLOCK *****
 */
-#ifndef _UTXX_TIMESTAMP_HPP_
-#define _UTXX_TIMESTAMP_HPP_
+#pragma once
 
 #include <utxx/high_res_timer.hpp>
 #include <utxx/time_val.hpp>
@@ -42,17 +41,6 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 #endif
 
 namespace utxx {
-
-enum stamp_type {
-      NO_TIMESTAMP
-    , TIME
-    , TIME_WITH_MSEC
-    , TIME_WITH_USEC
-    , DATE
-    , DATE_TIME
-    , DATE_TIME_WITH_MSEC
-    , DATE_TIME_WITH_USEC
-};
 
 /// Parse a timestamp from string.
 /// Parsing is case-insensitive. The value is one of:
@@ -78,6 +66,7 @@ protected:
     static thread_local long        s_utc_nsec_offset;
     static thread_local char        s_utc_timestamp[16];
     static thread_local char        s_local_timestamp[16];
+    static thread_local char        s_local_timezone[8];
 
     #ifdef DEBUG_TIMESTAMP
     static volatile long s_hrcalls;
@@ -85,9 +74,12 @@ protected:
     #endif
 
     static char* internal_write_date(
-        char* a_buf, time_t a_utc_seconds, bool a_utc, size_t eos_pos, char a_sep);
+        char* a_buf, time_t a_utc_seconds, bool a_utc, size_t eos_pos, char a_sep) {
+        assert(s_next_utc_midnight_nseconds);
 
-    static void update_midnight_nseconds(time_val a_now);
+        if (!a_utc) a_utc_seconds += utc_offset();
+        return time_val(secs(a_utc_seconds)).write_date(a_buf, eos_pos, a_sep);
+    }
 
     static void update_slow();
 
@@ -100,6 +92,11 @@ public:
     /// Suggested buffer space type needed for format() calls.
     typedef char buf_type[32];
 
+    // These methods are made public for testing only:
+    static void        update_midnight_nseconds(time_val a_now);
+    static const char* cached_utc_timestamp()   { return s_utc_timestamp;   }
+    static const char* cached_local_timestamp() { return s_local_timestamp; }
+
     /// Write local date in format: YYYYMMDD, YYYY-MM-DD. If \a eos_pos > 8
     /// the function appends '-' at the end of the YYYYMMDD string.
     /// The function sets a_buf[eos_pos] = '\0'.
@@ -107,7 +104,7 @@ public:
     /// @return pointer past the last written character
     static char* write_date(
         char* a_buf, time_t a_utc_seconds, bool a_utc=false,
-        size_t eos_pos=8, char a_sep = '\0');
+        size_t eos_pos=8, char a_sep = '\0', bool a_use_cached_date = true);
 
     /// Write time as string.
     /// Possible formats:
@@ -120,31 +117,10 @@ public:
     /// @param a_delim controls the ':' delimiter ('\0' means no delimiter)
     /// @param a_sep   defines the fractional second separating character ('\0' means - none)
     /// @return pointer past the last written character
-    static char* write_time(
-        char* a_buf, time_val a_time, stamp_type a_type, bool a_utc=false,
-        char  a_delim = '\0', char a_sep = '.');
-
-    inline static char* write_time(
-        char* a_buf, time_t seconds, size_t eos_pos = 8, char a_delim = ':')
-    {
-        unsigned hour,min,sec;
-        std::tie(hour,min,sec) = time_val::to_hms(seconds);
-        char* p = a_buf;
-        int n = hour / 10;
-        *p++  = '0' + n;    hour -= n*10;
-        *p++  = '0' + hour; n = min / 10;
-        if (a_delim) *p++  = a_delim;
-        *p++  = '0' + n;    min -= n*10;
-        *p++  = '0' + min;  n = sec / 10;
-        if (a_delim) *p++  = a_delim;
-        *p++  = '0' + n;    sec -= n*10;
-        *p++  = '0' + sec;
-        if (eos_pos) {
-            a_buf[eos_pos] = '\0';
-            char* end = a_buf + eos_pos;
-            return end < p ? end : p;
-        }
-        return p;
+    static char* write_time(char* a_buf, time_val a_time, stamp_type a_type,
+                            bool a_utc=false, char  a_delim = '\0', char a_sep = '.') {
+        auto   tsec = a_utc ? a_time : a_time.add_nsec(s_utc_nsec_offset);
+        return tsec.write_time(a_buf, a_type, a_delim, a_sep);
     }
 
     /// Update internal timestamp by calling gettimeofday().
@@ -165,23 +141,33 @@ public:
         // FIXME: the method below will produce incorrect time stamps during
         // switch to/from daylight savings time because of the unaccounted
         // utc_offset change.
-        if (unlikely(a_now.nanoseconds() >= s_next_utc_midnight_nseconds))
+        auto ns = a_now.nanoseconds();
+        if (unlikely((ns >= s_next_utc_midnight_nseconds) ||
+                     (ns + s_utc_nsec_offset >= s_next_local_midnight_nseconds)))
             update_midnight_nseconds(a_now);
     }
 
+    /// Return symbolic abbreviation of local timzone
+    static const char* local_timezone()    { return s_local_timezone; }
+
     /// Return the number of seconds from epoch to midnight in UTC.
-    static time_t utc_midnight_seconds()   { return utc_midnight_nseconds().sec();  }
+    static time_t utc_midnight_seconds()   { return utc_midnight_time().sec();  }
     /// Return the number of seconds from epoch to midnight in local time.
-    static time_t local_midnight_seconds() { return local_midnight_nseconds().sec();}
+    static time_t local_midnight_seconds() { return local_midnight_time().sec();}
 
     /// Return the number of nanoseconds from epoch to midnight in UTC.
-    static time_val utc_midnight_nseconds()   {
+    static time_val utc_midnight_time()   {
         return nsecs(s_next_utc_midnight_nseconds - DAY_NSEC);
     }
     /// Return the number of nanoseconds from epoch to midnight in local time.
-    static time_val local_midnight_nseconds() {
+    static time_val local_midnight_time() {
         return nsecs(s_next_local_midnight_nseconds - DAY_NSEC);
     }
+
+    /// Return the number of seconds from epoch to midnight in UTC.
+    static time_val utc_next_midnight_time()   {return nsecs(s_next_utc_midnight_nseconds);}
+    /// Return the number of seconds from epoch to midnight in local time.
+    static time_val local_next_midnight_time() {return nsecs(s_next_local_midnight_nseconds);}
 
     /// Number of seconds since midnight in local time zone for a given UTC time.
     static time_t local_seconds_since_midnight(time_t a_utc_time) {
@@ -197,11 +183,13 @@ public:
         return s_utc_nsec_offset / 1000000000L;
     }
 
+    static long utc_offset_nseconds() { return s_utc_nsec_offset; }
+
     /// Convert a timestamp to the number of microseconds
     /// since midnight in local time.
     static int64_t local_usec_since_midnight(time_val a_now_utc) {
         check_midnight_seconds();
-        long diff = a_now_utc.diff_nsec(local_midnight_nseconds());
+        long diff = a_now_utc.diff_nsec(local_midnight_time());
         if (unlikely(diff < 0)) diff = -diff % DAY_NSEC;
         return diff / 1000;
     }
@@ -210,7 +198,7 @@ public:
     /// since midnight in UTC.
     static int64_t utc_usec_since_midnight(time_val a_now_utc) {
         check_midnight_seconds();
-        long diff = a_now_utc.diff_nsec(utc_midnight_nseconds());
+        long diff = a_now_utc.diff_nsec(utc_midnight_time());
         if (unlikely(diff < 0)) diff = -diff % DAY_NSEC;
         return diff / 1000;
     }
@@ -243,28 +231,32 @@ public:
     static size_t format_size(stamp_type a_tp);
 
     /// Write a time_val to \a a_buf.
-    /// @param tv current time
-    /// @param a_buf output buffer
-    /// @param a_sz  output buffer size
-    /// @param a_utc write UTC time
-    /// @param a_day_chk check for day change since last call
+    /// @param a_tp              output time format
+    /// @param a_tv              current time
+    /// @param a_buf             output buffer
+    /// @param a_sz              output buffer size
+    /// @param a_utc             write UTC time
+    /// @param a_day_chk         check for day change since last call
+    /// @param a_use_cached_date attempt to use cached formatted date buffer if
+    ///                          current date matches the last cached date value
     /// @return number of written bytes
-    static int format(stamp_type a_tp,
-        time_val tv, char* a_buf, size_t a_sz, bool a_utc=false, bool a_day_chk=true);
+    static int format(stamp_type a_tp, time_val a_tv, char* a_buf, size_t a_sz,
+                      bool a_utc=false, bool a_day_chk=true, bool a_use_cached_date=true);
 
     template <int N>
     inline static int format(stamp_type a_tp, time_val tv,
-            char (&a_buf)[N], bool a_utc = false) {
-        return format(a_tp, tv, a_buf, N, a_utc);
+            char (&a_buf)[N], bool a_utc = false, bool a_use_cached_date=true) {
+        return format(a_tp, tv, a_buf, N, a_utc, a_use_cached_date);
     }
 
-    inline static std::string to_string(stamp_type a_tp = TIME_WITH_USEC, bool a_utc=false) {
-        return to_string(now_utc(), a_tp, a_utc);
+    inline static std::string to_string(stamp_type a_tp = TIME_WITH_USEC,
+                                        bool a_utc=false, bool a_use_cached_date=true) {
+        return to_string(now_utc(), a_tp, a_utc, a_use_cached_date);
     }
 
-    inline static std::string to_string(
-            time_val a_tv, stamp_type a_tp=TIME_WITH_USEC, bool a_utc=false) {
-        buf_type buf; format(a_tp, a_tv, buf, sizeof(buf), a_utc);
+    inline static std::string to_string(time_val a_tv, stamp_type a_tp=TIME_WITH_USEC,
+                                        bool a_utc=false, bool a_use_cached_date=true) {
+        buf_type buf; format(a_tp, a_tv, buf, sizeof(buf), a_utc, a_use_cached_date);
         return std::string(buf);
     }
 
@@ -272,8 +264,11 @@ public:
     static time_val from_string(const char* a_datetime, size_t n, bool a_utc = true);
 };
 
+//---------------------------------------------------------------------------
+/// Streaming support for time_val
+//---------------------------------------------------------------------------
 inline std::ostream& operator<< (std::ostream& out, time_val a) {
-    return out << timestamp::to_string(a, TIME_WITH_USEC, false);
+    return out << timestamp::to_string(a, DATE_TIME_WITH_USEC, false);
 }
 
 //---------------------------------------------------------------------------
@@ -311,5 +306,3 @@ private:
 #ifdef DEBUG_TIMESTAMP
 #include <utxx/../../src/timestamp.cpp>
 #endif
-
-#endif // _UTXX_TIMESTAMP_HPP_
