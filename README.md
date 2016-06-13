@@ -1,4 +1,4 @@
-# utxx - an open-source collection of C++ miscelaneous components #
+# utxx - an open-source collection of C++ utility components #
 
 This dual-licensed library provides a set of classes that
 complement C++ and boost with functionality needed by many
@@ -11,7 +11,7 @@ licensing details).
 
 The components include:
 
-* Custom allocators
+* Custom allocators (including atomic pool allocator, stack allocator)
 * Atomic functions
 * Bitmap mask with fast iteration
 * BOOST wait_timeout, repeating timer
@@ -23,13 +23,13 @@ The components include:
 * Exception error classes with dynamic number of arguments
 * Hashmap abstraction
 * UDP receiver
-* Logging framework
+* Logging framework with pluggable back-ends using Inversion of Control design pattern 
 * Ultra-low latency async logger
 * Math functions
 * Metaprogramming functions
 * Persistent blob and array
 * Futex signaling
-* PCAP format reader
+* PCAP format reader/writer
 * Throttling components
 * PID file manager
 * Variant / variant tree components
@@ -41,17 +41,55 @@ The components include:
 ``$ git clone git@github.com:saleyn/utxx.git``
 
 ## Building ##
-Make sure that you have autoconf-archive package installed:
-http://www.gnu.org/software/autoconf-archive
+To customize location of BOOST or installation prefix, create a file called
+`.cmake-args.${HOSTNAME}`. Alternatively if you are doing multi-host build with
+identical configuration, create a file call `.cmake-args`. E.g.:
 
+There are three sets of variables present in this file:
+
+1. Build and install locations.
+
+   * `DIR:BUILD=...`   - Build directory
+   * `DIR:INSTALL=...` - Install directory
+
+   They may contain macros:
+   
+      * `@PROJECT@`   - name of current project (from CMakeList.txt)
+      * `@VERSION@`   - project version number  (from CMakeList.txt)
+      * `@BUILD@`     - build type (from command line)
+      * `${...}`      - environment variable
+
+2. `ENV:VAR=...`     - Environment var set before running cmake
+
+3. `VAR=...`         - Variable passed to cmake with -D prefix
+
+Example:
+```
+$ cat > .cmake-args.${HOSTNAME}
+DIR:BUILD=/tmp/@PROJECT@/build
+DIR:INSTALL=/opt/pkt/@PROJECT@/@VERSION@
+ENV:BOOST_ROOT=/opt/pkg/boost/current
+ENV:BOOST_LIBRARYDIR=/opt/pkg/boost/current/gcc/lib
+PKG_ROOT_DIR=/opt/pkg
+```
 Run:
 ```
-$ ./bootstrap
-$ ./configure --with-boost="/path/to/boost" \
-	[--prefix="/target/install/path"]
-$ make
-$ make install      # Default install path is ./install
+$ make bootstrap [toolchain=gcc|clang]  [build=Debug|Release] \
+                 [generator=make|ninja] [prefix=/usr/local] [verbose=true]
+$ make [verbose=true]
+$ make install      # Default install path is /usr/local
 ```
+After running `make bootstrap` two local links are created `build` and `inst`
+pointing to build and installation directories.
+
+If you need to do a full cleanup of the current build and rerun bootstrap with
+previously chosen options, do:
+```
+$ make distclean
+$ make rebootstrap [toolchain=gcc|clang]  [build=Debug|Release]
+```
+Note that the `rebootstrap` command remembers previous bootstrap options, but
+if you give it arguments they will override the old ones.
 
 ## Commit Notifications ##
 The following news group was set up for commit notifications:
@@ -87,10 +125,11 @@ Longer description (wrap at 72 characters)
 * Make whitespace changes separately
 
 #### Code Formatting ####
-* Wrap at 80 characters
+* Wrap at 80 characters (not counting '\n')
 * Use 4-space indentation
 * Expand tabs with spaces in indentations (for vi use settings: `ts=4:sw=4:et`)
-* Use the following braces style:
+* Place `"// vim:ts=4:sw=4:et"` at the beginning of each file
+* Use K&R braces style:
 ```
 if (...) {
    ...
@@ -100,10 +139,7 @@ if (...) {
 ```
 ## Author ##
 * Serge Aleynikov `<saleyn at gmail dot com>`
-
-## Contributors ##
-* Dmitriy Kargapolov `<dmitriy.kargapolov at gmail dot com>`
-* Leonid Timochouk   `<l.timochouk at gmail dot com>`
+* (see AUTHORS.md for a list of contributors)
 
 ## LICENSE ##
 * Non-commercial: GNU Lesser General Public License 2.1

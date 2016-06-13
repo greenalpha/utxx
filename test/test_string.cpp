@@ -46,6 +46,58 @@ BOOST_AUTO_TEST_CASE( test_string_conversion )
         std::stringstream s; s << fixed(10.123, 8, 4, '0');
         BOOST_CHECK_EQUAL("010.1230", s.str());
     }
+    {
+        auto pair = split("", ",");
+        BOOST_CHECK_EQUAL("", pair.first);
+        BOOST_CHECK_EQUAL("", pair.second);
+
+        pair = split("abc,efg", ",");
+        BOOST_CHECK_EQUAL("abc", pair.first);
+        BOOST_CHECK_EQUAL("efg", pair.second);
+
+        pair = split("abc||efg", "||");
+        BOOST_CHECK_EQUAL("abc", pair.first);
+        BOOST_CHECK_EQUAL("efg", pair.second);
+
+        pair = split("abc|efg|xyz", "|");
+        BOOST_CHECK_EQUAL("abc",     pair.first);
+        BOOST_CHECK_EQUAL("efg|xyz", pair.second);
+
+        pair = split("abc", ",");
+        BOOST_CHECK_EQUAL("abc", pair.first);
+        BOOST_CHECK_EQUAL("",    pair.second);
+
+        pair = split<RIGHT>("", ",");
+        BOOST_CHECK_EQUAL("", pair.first);
+        BOOST_CHECK_EQUAL("", pair.second);
+
+        pair = split<RIGHT>("abc,efg,xyz", ",");
+        BOOST_CHECK_EQUAL("abc,efg", pair.first);
+        BOOST_CHECK_EQUAL("xyz",     pair.second);
+
+        pair = split<RIGHT>("abc||efg", "||");
+        BOOST_CHECK_EQUAL("abc", pair.first);
+        BOOST_CHECK_EQUAL("efg", pair.second);
+
+        pair = split<RIGHT>("abc", "||");
+        BOOST_CHECK_EQUAL("",    pair.first);
+        BOOST_CHECK_EQUAL("abc", pair.second);
+    }
+    {
+        std::vector<std::string> v{"a","b","c"};
+        auto s1 = join(v, ",");
+        BOOST_CHECK_EQUAL("a,b,c", s1);
+        auto s2 = join(v.begin(), v.end());
+        BOOST_CHECK_EQUAL("a,b,c", s2);
+        auto s3 = join(v.begin(), v.end(), std::string(":"));
+        BOOST_CHECK_EQUAL("a:b:c", s3);
+
+        BOOST_CHECK_EQUAL("",    strjoin("",  "", "/"));
+        BOOST_CHECK_EQUAL("a",   strjoin("a", "", "/"));
+        BOOST_CHECK_EQUAL("b",   strjoin("",  "b", "/"));
+        BOOST_CHECK_EQUAL("a/b", strjoin("a", "b", "/"));
+        BOOST_CHECK_EQUAL("a//b",strjoin("a", "b", "//"));
+    }
 }
 
 BOOST_AUTO_TEST_CASE( test_string_length )
@@ -64,6 +116,9 @@ BOOST_AUTO_TEST_CASE( test_string_length )
 
     const t arr[] = { t(1), t(2) };
     BOOST_REQUIRE_EQUAL(2u, length(arr));
+
+    size_t b[3];
+    BOOST_REQUIRE_EQUAL(3u, length<decltype(b)>());
 }
 
 enum op_type {OP_UNDEFINED = -1, OP_ADD, OP_REMOVE, OP_REPLACE, OP_UPDATE};

@@ -52,9 +52,11 @@ inline bool logger::dolog(
     if (!is_enabled(a_level))
         return false;
 
-    return m_queue.emplace(a_level, a_cat, a_fun,
-                           a_src_loc, a_src_loc_len,
-                           a_src_fun, a_src_fun_len);
+    bool res = m_queue.emplace(a_level, a_cat, a_fun,
+                               a_src_loc, a_src_loc_len,
+                               a_src_fun, a_src_fun_len);
+    m_event.signal_fast();
+    return res;
 }
 
 inline bool logger::dolog(
@@ -72,9 +74,11 @@ inline bool logger::dolog(
 
     std::string sbuf(a_buf, a_size);
 
-    return m_queue.emplace(a_level, a_cat, sbuf,
-                           a_src_loc, a_src_loc_len,
-                           a_src_fun, a_src_fun_len);
+    bool res = m_queue.emplace(a_level, a_cat, sbuf,
+                               a_src_loc, a_src_loc_len,
+                               a_src_fun, a_src_fun_len);
+    m_event.signal_fast();
+    return res;
 }
 
 template <int N, int M>
@@ -87,6 +91,17 @@ inline bool logger::logcs(
     const char        (&a_src_fun)[M])
 {
     return dolog(a_level, a_cat, a_buf, a_size, a_src_loc, N-1, a_src_fun, M-1);
+}
+
+namespace {
+    inline int do_copy(char* a_buf, size_t a_sz, const char* a_str) {
+        char* p = a_buf;
+        return stpncpy(p, a_str, a_sz) - a_buf;
+    }
+    template <class... Args>
+    inline int do_copy(char* a_buf, size_t a_sz, const char* a_fmt, Args&&... args) {
+        return std::snprintf(a_buf, a_sz, a_fmt, std::forward<Args>(args)...);
+    }
 }
 
 template <int N, int M, typename... Args>
@@ -102,9 +117,14 @@ inline bool logger::logfmt(
         return false;
 
     char buf[1024];
-    int  n = snprintf(buf, sizeof(buf), a_fmt, a_args...);
+    int  n;
+    // The condition below prevents the compiler warning about snprintf
+    // when there are no arguments provides, since a_fmt is not a string literal
+    n = do_copy(buf, sizeof(buf), a_fmt, std::forward<Args>(a_args)...);
     std::string sbuf(buf, std::min<int>(n, sizeof(buf)-1));
-    return m_queue.emplace(a_level, a_cat, sbuf, a_src_loc, N-1, a_src_fun, M-1);
+    bool res = m_queue.emplace(a_level, a_cat, sbuf, a_src_loc, N-1, a_src_fun, M-1);
+    m_event.signal_fast();
+    return res;
 }
 
 template <typename... Args>
@@ -119,9 +139,11 @@ inline bool logger::logs(
 
     detail::basic_buffered_print<1024> buf;
     buf.print(std::forward<Args>(a_args)...);
-    return m_queue.emplace(a_level, a_cat,
-                           a_si.srcloc(), a_si.srcloc_len(),
-                           a_si.fun(), a_si.fun_len(), buf.to_string());
+    bool res = m_queue.emplace(a_level, a_cat,
+                               a_si.srcloc(), a_si.srcloc_len(),
+                               a_si.fun(), a_si.fun_len(), buf.to_string());
+    m_event.signal_fast();
+    return res;
 }
 
 template <int N, int M, typename... Args>
@@ -137,8 +159,10 @@ inline bool logger::logs(
 
     detail::basic_buffered_print<1024> buf;
     buf.print(std::forward<Args>(a_args)...);
-    return m_queue.emplace(a_level, a_cat, buf.to_string(),
-                           a_src_loc, N-1, a_src_fun, M-1);
+    bool res = m_queue.emplace(a_level, a_cat, buf.to_string(),
+                               a_src_loc, N-1, a_src_fun, M-1);
+    m_event.signal_fast();
+    return res;
 }
 
 template <int N, int M>
@@ -152,7 +176,9 @@ inline bool logger::log(
     if (!is_enabled(a_level))
         return false;
 
-    return m_queue.emplace(a_level, a_cat, a_msg, a_src_loc, N-1, a_src_fun, M-1);
+    bool res = m_queue.emplace(a_level, a_cat, a_msg, a_src_loc, N-1, a_src_fun, M-1);
+    m_event.signal_fast();
+    return res;
 }
 
 inline bool logger::log(
@@ -164,8 +190,10 @@ inline bool logger::log(
     if (!is_enabled(a_level))
         return false;
 
-    return m_queue.emplace(a_level, a_cat, a_msg, a_si.srcloc(), a_si.srcloc_len(),
-                           a_si.fun(), a_si.fun_len());
+    bool res = m_queue.emplace(a_level, a_cat, a_msg, a_si.srcloc(), a_si.srcloc_len(),
+                               a_si.fun(), a_si.fun_len());
+    m_event.signal_fast();
+    return res;
 }
 
 template <int N, int M, typename... Args>
@@ -186,7 +214,9 @@ inline bool logger::async_logs(
         buf.sprint(sfx, ssz);
         return buf.to_string();
     };
-    return m_queue.emplace(a_level, a_cat, fun, a_src_loc, N-1, a_src_fun, M-1);
+    bool res = m_queue.emplace(a_level, a_cat, fun, a_src_loc, N-1, a_src_fun, M-1);
+    m_event.signal_fast();
+    return res;
 }
 
 // TODO: make synchronous string formatting
@@ -205,7 +235,9 @@ inline bool logger::async_logfmt(
     auto fun = [=](char* a_buf, size_t a_size) {
         return snprintf(a_buf, a_size, a_fmt, std::forward<Args>(a_args)...);
     };
-    return m_queue.emplace(a_level, a_cat, fun, a_src_loc, N-1, a_src_fun, M-1);
+    bool res = m_queue.emplace(a_level, a_cat, fun, a_src_loc, N-1, a_src_fun, M-1);
+    m_event.signal_fast();
+    return res;
 }
 
 } // namespace utxx

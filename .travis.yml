@@ -1,25 +1,50 @@
 language: cpp
-compiler: gcc
-before_script:
+compiler: g++
+addons:
+  apt:
+    sources:
+    - ubuntu-toolchain-r-test
+    - boost-latest
+    packages:
+    - gcc-5
+    - g++-5
+    - libboost1.55-all-dev
+    - libxslt1.1
+    - python-lxml
+    - doxygen
+
+before_install:
   - lsb_release -a
   - uname -a
   - sudo apt-add-repository -y "deb http://archive.ubuntu.com/ubuntu/ trusty main restricted"
   - sudo add-apt-repository -y "deb http://ppa.launchpad.net/dns/gnu/ubuntu precise main"
   - sudo add-apt-repository -y "deb http://ppa.launchpad.net/wnoronha/thrift/ubuntu precise main"
   - sudo add-apt-repository -y "deb http://ppa.launchpad.net/kzemek/boost/ubuntu utopic main"
-  - sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
+  - sudo add-apt-repository ppa:george-edison55/precise-backports --yes
   - sudo apt-get update -qq
-  - sudo apt-get install -qq g++-4.9
-  - sudo apt-get install -qq automake autoconf autoconf-archive libboost1.58-all-dev
-  - dpkg -S /usr/include/boost/version.hpp
-  - sudo apt-get install -qq libxslt1.1 python-lxml libthrift-dev libthrift0 thrift-compiler
-  - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-4.9 90
-  - ./bootstrap
+  - sudo apt-get install cmake-data cmake
+  - # sudo apt-get install libboost1.55-all-dev
+  - # sudo updatedb
+  - # dpkg -S /usr/include/boost/version.hpp
+  - # sudo dpkg -L libboost1.55-all-dev
+  - # find /usr/include/boost -print | head -100
+  - # grep BOOST_LIB_VERSION /usr/include/boost/version.hpp | grep define
+  - # locate libboost | head -100
+  - sudo apt-get install -qq libthrift-dev libthrift0 thrift-compiler
+  - ls -1 /usr/bin/g++*
+  - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-5 90
+
+before_script:
+  - echo "DIR:BUILD=/tmp/${USER}/utxx"                           > .cmake-args.$(hostname)
+  - echo "DIR:INSTALL=/tmp/${USER}/install/@PROJECT@/@VERSION@" >> .cmake-args.$(hostname)
+  - echo "PKG_ROOT_DIR=/usr/local"                              >> .cmake-args.$(hostname)
+  - echo "WITH_THRIFT=OFF"                                      >> .cmake-args.$(hostname)
+  - echo "BOOST_INCLUDEDIR=/usr/include"                        >> .cmake-args.$(hostname)
+  - echo "BOOST_LIBRARYDIR=/usr/lib/x86_64-linux-gnu"           >> .cmake-args.$(hostname)
+  - echo "WITH_ENUM_SERIALIZATION=ON"                           >> .cmake-args.$(hostname)
   - g++ --version
 script:
-  - ./configure --with-boost-libdir=/usr/lib/x86_64-linux-gnu #--with-thrift=/usr
-  - make debug=true optimize=3
-after_script:
-  - cat config.log
+  - make bootstrap generator=make build=Debug
+  - make
 branches:
   only: master

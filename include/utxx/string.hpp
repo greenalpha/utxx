@@ -30,9 +30,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 ***** END LICENSE BLOCK *****
 */
-
-#ifndef _UTXX_STRING_HPP_
-#define _UTXX_STRING_HPP_
+#pragma once
 
 #include <string>
 #include <iostream>
@@ -43,6 +41,8 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 #include <stdexcept>
 #include <sstream>
 #include <array>
+#include <type_traits>
+#include <utxx/types.hpp>
 #include <utxx/print.hpp>
 
 //-----------------------------------------------------------------------------
@@ -53,21 +53,19 @@ namespace utxx {
 
     /// Return the static length of an array of type T
     template <typename T, int N>
-    #if __cplusplus >= 201103L
-    constexpr
-    #endif
-    size_t length(const T (&a)[N]) {
-        return N;
-    }
+    constexpr size_t length(const T (&a)[N])    { return N; }
 
     /// Return the static length of a character string
     template <int N>
-    #if __cplusplus >= 201103L
-    constexpr
-    #endif
-    size_t length(const char (&a)[N]) {
-        return N-1;
-    }
+    constexpr size_t length(const char (&a)[N]) { return N-1; }
+
+    /// Return the static length of any given type.
+    /// Example:
+    /// \code
+    /// size_t b[3]; cout << length<decltype(b)>() << endl;
+    /// \endcode
+    template <typename T>
+    constexpr size_t length() { return std::extent<T>::value; }
 
     /// Convert boolean to string
     inline constexpr const char* to_string(bool a_value) {
@@ -117,6 +115,58 @@ namespace utxx {
     template <int N, int M>
     inline char* copy(char (&a_dest)[N], const std::array<char, M>& a_src, char a_delim='\0') {
         return copy(a_dest, N, a_src.data(), M, a_delim);
+    }
+
+    /// Split \a a_str at the specified delimiter.
+    /// Example: \code split<LEFT>("abc, efg", ", ") -> {"abc", "efg"} \endcode
+    template <alignment Side = LEFT>
+    inline std::pair<std::string, std::string> split(std::string const& a_str, std::string const& a_delim = "|") {
+        auto   found =  Side == LEFT ? a_str.find(a_delim) : a_str.rfind(a_delim);
+        return found == std::string::npos
+            ? (Side == LEFT ? std::make_pair(a_str, std::string()) : std::make_pair(std::string(), a_str))
+            : std::make_pair(a_str.substr(0, found), a_str.substr(found+a_delim.size()));
+    }
+
+    namespace { auto def_joiner = [](auto& a) { return a; }; }
+
+    /// Join two strings with a delimiter \a a_delim
+    inline std::string strjoin(const std::string& a, const std::string& b, const std::string& a_delim) {
+        if (a.empty()) return b.empty() ? "" : b;
+        if (b.empty()) return a;
+        std::string s;
+        s.reserve(a.size() + b.size() + a_delim.size() + 1);
+        return s.append(a).append(a_delim).append(b);
+    }
+
+    inline std::string strjoin(const char* a, const char* b, const std::string& a_delim) {
+        if (a[0] == '\0') return b[0] == '\0' ? "" : b;
+        if (b[0] == '\0') return a;
+        std::string s;
+        s.reserve(strlen(a) + strlen(b) + a_delim.size() + 1);
+        return s.append(a).append(a_delim).append(b);
+    }
+
+    /// Join an iterator range to string delimited by \a a_delim
+    /// \code Example: std::string s=join(vec.begin(), vec.end());\endcode
+    template <class A, class ToStrFun = decltype(def_joiner)>
+    std::string join(const A& a_begin, const A& a_end, const std::string& a_delim = ",", const ToStrFun& a_convert = def_joiner)
+    {
+        std::string result;
+        auto it  = a_begin;
+        if  (it != a_end) result.append(a_convert(*it++));
+        for (; it != a_end; ++it) {
+            result.append(a_delim);
+            result.append(a_convert(*it));
+        }
+        return result;
+    }
+
+    /// Join strings from a given collection to string delimited by \a a_delim
+    /// \code Example: std::string s=join(vec);\endcode
+    template <class Collection, class ToStrFun = decltype(def_joiner)>
+    std::string join(const Collection& a_vec, const std::string& a_delim, const ToStrFun& a_convert = def_joiner)
+    {
+        return join(a_vec.begin(), a_vec.end(), a_delim, a_convert);
     }
 
     /// Convert a string to an integer value
@@ -305,8 +355,6 @@ namespace utxx {
                               bool hex = false, bool readable = true,
                               bool eol = false);
 
-#if __cplusplus >= 201103L
-
     template <class... Args>
     inline std::string to_string(Args&&... args) {
         buffered_print buf;
@@ -314,71 +362,4 @@ namespace utxx {
         return buf.to_string();
     }
 
-#else
-
-    template <class T1>
-    inline std::string to_string(T1 a1) {
-        std::stringstream s; s << a1; return s.str();
-    }
-
-    template <class T1, class T2>
-    inline std::string to_string(T1 a1, T2 a2) {
-        std::stringstream s; s << a1 << a2; return s.str();
-    }
-
-    template <class T1, class T2, class T3>
-    inline std::string to_string(T1 a1, T2 a2, T3 a3) {
-        std::stringstream s; s << a1 << a2 << a3; return s.str();
-    }
-
-    template <class T1, class T2, class T3, class T4>
-    inline std::string to_string(T1 a1, T2 a2, T3 a3, T4 a4) {
-        std::stringstream s; s << a1 << a2 << a3 << a4; return s.str();
-    }
-
-    template <class T1, class T2, class T3, class T4, class T5>
-    inline std::string to_string(T1 a1, T2 a2, T3 a3, T4 a4, T5 a5) {
-        std::stringstream s; s << a1 << a2 << a3 << a4 << a5;
-        return s.str();
-    }
-
-    template <class T1, class T2, class T3, class T4, class T5, class T6>
-    inline std::string to_string(T1 a1, T2 a2, T3 a3, T4 a4, T5 a5, T6 a6) {
-        std::stringstream s; s << a1 << a2 << a3 << a4 << a5 << a6;
-        return s.str();
-    }
-
-    template <class T1, class T2, class T3, class T4, class T5, class T6, class T7>
-    inline std::string to_string(T1 a1, T2 a2, T3 a3, T4 a4, T5 a5, T6 a6, T7 a7) {
-        std::stringstream s; s << a1 << a2 << a3 << a4 << a5 << a6 << a7;
-        return s.str();
-    }
-
-    template <class T1, class T2, class T3, class T4, class T5, class T6, class T7, class T8>
-    inline std::string to_string(T1 a1, T2 a2, T3 a3, T4 a4, T5 a5, T6 a6, T7 a7, T8 a8) {
-        std::stringstream s; s << a1 << a2 << a3 << a4 << a5 << a6 << a7 << a8;
-        return s.str();
-    }
-
-    template <class T1, class T2, class T3, class T4,
-              class T5, class T6, class T7, class T8, class T9>
-    inline std::string to_string(T1 a1, T2 a2, T3 a3, T4 a4,
-                                 T5 a5, T6 a6, T7 a7, T8 a8, T9 a9) {
-        std::stringstream s; s << a1 << a2 << a3 << a4 << a5 << a6 << a7 << a8 << a9;
-        return s.str();
-    }
-
-    template <class T1, class T2, class T3, class T4,
-              class T5, class T6, class T7, class T8, class T9, class T10>
-    inline std::string to_string(T1 a1, T2 a2, T3 a3, T4 a4,
-                                 T5 a5, T6 a6, T7 a7, T8 a8, T9 a9, T10 a10) {
-        std::stringstream s; s << a1 << a2 << a3 << a4
-                               << a5 << a6 << a7 << a8 << a9 << a10;
-        return s.str();
-    }
-
-#endif
-
 } // namespace utxx
-
-#endif // _UTXX_STRING_HPP_

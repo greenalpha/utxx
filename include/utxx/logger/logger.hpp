@@ -168,11 +168,16 @@ struct logger : boost::noncopyable {
 
     /// Return log level as a 1-char string
     static const std::string& log_level_to_abbrev(log_level level)  noexcept;
-    static const std::string& log_level_to_string(log_level level)  noexcept;
-    static const char*        log_level_to_str(log_level level)     noexcept
-                              { return log_level_to_string(level).c_str(); }
+
+    /// Convert a log_level to string
+    /// @param level level to convert
+    /// @param merge_trace when true all TRACE1-5 levels are returned as "TRACE"
+    static const std::string& log_level_to_string(log_level level,
+                                                  bool merge_trace=true)  noexcept;
+    static const char*        log_level_to_str(log_level level, bool merge_trace=true) noexcept
+                              { return log_level_to_string(level, merge_trace).c_str(); }
     static size_t             log_level_size  (log_level level)     noexcept;
-    static std::string        log_levels_to_str(int a_levels)       noexcept;
+    static std::string        log_levels_to_str(uint32_t a_levels)  noexcept;
     /// Convert a <level> to the slot number in the <m_sig_msg> array
     static int                level_to_signal_slot(log_level level) noexcept;
     /// Convert a <level> to the slot number in the <m_sig_msg> array
@@ -196,6 +201,7 @@ struct logger : boost::noncopyable {
         std::size_t   m_src_fun_len;
         const char*   m_src_fun;
         payload_t     m_type;
+        pthread_t     m_thread_id;
 
         union U {
             char_function  cf;
@@ -223,6 +229,7 @@ struct logger : boost::noncopyable {
             , m_src_fun_len (a_sfun_len)
             , m_src_fun     (a_src_fun)
             , m_type        (a_type)
+            , m_thread_id   (pthread_self())
             , m_fun         (a_fun)
         {}
 
@@ -379,7 +386,7 @@ private:
     std::unique_ptr<std::thread>    m_thread;
     concurrent_queue                m_queue;
     bool                            m_abort                 = false;
-    bool                            m_initialized           = false;
+    std::atomic<bool>               m_initialized;
     futex                           m_event;
     std::mutex                      m_mutex;
     struct timespec                 m_wait_timeout;
@@ -391,12 +398,16 @@ private:
     char                            m_src_location[256];
     bool                            m_show_location         = true;
     int                             m_show_fun_namespaces   = 3;
+    bool                            m_show_category         = false;
     bool                            m_show_ident            = false;
+    bool                            m_show_thread           = false;
     std::string                     m_ident;
     bool                            m_silent_finish         = false;
-    bool                            m_use_sched_yield       = true;
+    long                            m_sched_yield_us        = 250;
     macro_var_map                   m_macro_var_map;
 
+    /// Signal set handled by the installed crash signal handler
+    static std::atomic<sigset_t*>   m_crash_sigset;
 
     /// Callback executed on error (e.g. problem writing to logger's back-end)
     std::function<void (const char* a_reason)> m_error;
@@ -459,10 +470,16 @@ public:
     /// \brief Call to initialize the logger by reading configuration from file.
     /// Supported file formats: {scon, info, xml}. The file format is determined
     /// by the extension (".config|.conf" - SCON; ".info" - INFO; ".xml" - XML).
-    void init(const char* filename);
+    /// @param a_file           configuration filename
+    /// @param a_ignore_signals optional set of externally handled signals that
+    ///                         should be ignored by global signal crash handler.
+    void init(const char* a_file, const sigset_t* a_ignore_signals = nullptr);
 
     /// Call to initialize the logger from a configuration container.
-    void init(const config_tree& a_cfg);
+    /// @param a_file           configuration filename
+    /// @param a_ignore_signals optional set of externally handled signals that
+    ///                         should be ignored by global signal crash handler.
+    void init(const config_tree& a_cfg, const sigset_t* a_ignore_signals = nullptr);
 
     /// Called on destruction/reinitialization of the logger.
     void finalize();
@@ -494,7 +511,8 @@ public:
     /// Enable usage of sched_yield() instead of usleep() in the logging thread.
     /// Occasionally when running processing thread on max priority the use of
     /// sched_yield() can cause system resource starvation.
-    void use_sched_yield(bool a_enable) { m_use_sched_yield = a_enable; }
+    /// @param a_interval_us interval in microseconds (use -1 to disable)
+    void sched_yield_us(long a_interval_us) { m_sched_yield_us = a_interval_us; }
 
     /// Set a callback to be called on start of the logger's async thread
     void set_on_before_run(std::function<void()> a_cb) { m_on_before_run = a_cb; }
@@ -519,8 +537,12 @@ public:
     /// @return format type of timestamp written to log
     stamp_type  timestamp_type() const { return m_timestamp_type; }
 
-    /// @return true if ident display is enabled by default.
+    /// @return true if category logging is enabled by default.
+    bool        show_category()  const { return m_show_category; }
+    /// @return true if ident logging is enabled by default.
     bool        show_ident()     const { return m_show_ident; }
+    /// @return true if thread name logging is enabled.
+    bool        show_thread()    const { return m_show_ident; }
     /// @return true if source location display is enabled by default.
     bool        show_location()  const { return m_show_location; }
     /// @return Max depth of function name scope being printed (e.g.
@@ -534,12 +556,25 @@ public:
     /// Set program identifier to be used in the log output.
     void  ident(const std::string& a_ident) { m_ident = a_ident; }
 
-    /// Converts a string (e.g. "DEBUG | INFO | WARNING") sizeof(m_timestamp)-1to a bitmask of
-    /// corresponding levels.  This method is used for configuration parsing
+    /// Converts a delimited string to a bitmask of corresponding levels.
+    /// This method is used for configuration parsing.
+    /// @param a_levels delimited log levels (e.g. "DEBUG | INFO | WARNING").
     static int parse_log_levels(const std::string& levels) throw(std::runtime_error);
+    /// Converts a string (e.g. "INFO") to the corresponding log level.
+    static log_level parse_log_level(const std::string& a_level) throw(std::runtime_error);
+    /// Convert a string (e.g. "INFO") to the log levels greater or equal to it.
+    static int parse_min_log_level(const std::string& a_level) throw(std::runtime_error);
     /// String representation of log levels enabled by default.  Used in config
     /// parsing.
     static const char* default_log_levels;
+    /// Filter mask of levels that need to be logged
+    int        level_filter()     const { return m_level_filter; }
+    log_level  min_level_filter() const { return as_log_level(__builtin_ffs(m_level_filter)); }
+
+    /// If the crash handler is installed, return the handled signal set
+    static sigset_t* crash_handler_sigset() {
+        return m_crash_sigset.load(std::memory_order_relaxed);
+    }
 
     /// Dump internal settings
     std::ostream& dump(std::ostream& out) const;
@@ -576,7 +611,7 @@ public:
     template<int N, int M, typename... Args>
     bool logfmt(log_level a_level, const std::string& a_cat,
                 const char (&a_src_loc)[N], const char (&a_src_fun)[M],
-                const char* a_fmt, Args&&... a_args);
+                const char*  a_fmt, Args&&... a_args);
 
     /// Log a message of given log level to the registered implementations.
     /// Formatting of the resulting string to be logged happens in the caller's

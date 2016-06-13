@@ -65,6 +65,17 @@ std::string home() {
     #endif
 }
 
+std::string temp_path(std::string const& a_filename) {
+    #if defined(__windows__) || defined(_WIN32) || defined(_WIN64) || defined(_MSC_VER)
+    auto    p = getenv("TEMP");
+    if (!p) p = "";
+    #else
+    auto    p = P_tmpdir;
+    #endif
+    auto r = std::string(p);
+    return (a_filename.empty()) ? r : r + slash_str() + a_filename;
+}
+
 std::string basename(const std::string& a_file, const std::string& a_strip_ext) {
     auto e = a_file.c_str() + a_file.size();
     auto p = basename(a_file.c_str(), e);
@@ -76,23 +87,7 @@ std::string basename(const std::string& a_file, const std::string& a_strip_ext) 
     return std::string(p, e - p);
 }
 
-bool file_exists(const char* a_path) {
-    #if defined(_MSC_VER) || defined(_WIN32) || defined(__CYGWIN32__)
-    std::ifstream l_stream;
-    l_stream.open(a_path, std::ios_base::in);
-    if(l_stream.is_open()) {
-        l_stream.close();
-        return true;
-    }
-    #else
-    struct stat buf;
-    if (::lstat(a_path, &buf) != -1)
-        return true;
-    #endif
-    return false;
-}
-
-inline std::string
+std::string
 replace_env_vars(const std::string& a_path, const struct tm* a_now,
                  const std::map<std::string, std::string>*   a_bindings)
 {
@@ -171,8 +166,8 @@ filename_with_backup(const char* a_filename,
     //boost::algorithm::replace_all(l_filename, std::string(l_slash), "-");
     std::string l_filename = replace_env_vars(a_filename, a_now);
     std::string l_backup(l_filename);
-    size_t slash_pos = l_backup.find_last_of(slash());
-    size_t dot_pos   = l_backup.find_last_of('.');
+    size_t slash_pos = l_backup.rfind(slash());
+    size_t dot_pos   = l_backup.rfind('.');
     std::string l_ext;
 
     if (dot_pos != std::string::npos &&
@@ -268,7 +263,7 @@ program::program()
 #ifdef __linux__
     m_exe      = __progname;
     m_rel_path = __progname_full;
-    size_t n   = m_rel_path.find_last_of('/');
+    size_t n   = m_rel_path.rfind('/');
     if (n != std::string::npos)
         m_rel_path.erase(n);
     char exe[256];
@@ -305,7 +300,7 @@ program::program()
 
     m_abs_path = str_dll_path;
     m_exe = m_abs_path;
-    size_t n = m_abs_path.find_last_of('\\');
+    size_t n = m_abs_path.rfind('\\');
     if (n != std::string::npos) {
         m_abs_path.erase(n);
         m_exe.erase(0, n+1);

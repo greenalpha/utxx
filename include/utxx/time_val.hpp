@@ -475,7 +475,11 @@ namespace utxx {
         static char* write_date(time_t a_sec, char* a_buf, size_t a_eos = 8,
                                 char a_sep = '\0') {
             int y; unsigned m,d;
+<<<<<<< HEAD
             std::tie(y,m,d) = from_gregorian_time(a_sec);
+=======
+            from_gregorian_time(a_sec, y, m, d);
+>>>>>>> upstream/master
             int   n = y / 1000;
             char* p = a_buf;
             *p++ = '0' + n; y -= n*1000; n = y/100;

@@ -111,9 +111,9 @@ void unlink() {
         ::unlink(s_filename[i]);
 }
 
-auto worker = [&](int id, int iterations, boost::barrier* barrier,
-                  logger_t* logger, logger_t::file_id* files,
-                  perf_histogram* histogram, double* elapsed)
+auto worker = [](int id, int iterations, boost::barrier* barrier,
+                 logger_t* logger, logger_t::file_id* files,
+                 perf_histogram* histogram, double* elapsed)
 {
     barrier->wait();
     histogram->reset();
@@ -173,10 +173,10 @@ BOOST_AUTO_TEST_CASE( test_multi_file_logger_perf )
 
     BOOST_REQUIRE_EQUAL(0, ok);
 
-    std::shared_ptr<std::thread> threads[THREADS];
-    boost::barrier               barrier(THREADS+1);
-    double                       elapsed[THREADS];
-    perf_histogram               histograms[THREADS];
+    std::vector<std::shared_ptr<std::thread>>   threads(THREADS);
+    boost::barrier                              barrier(THREADS+1);
+    double                                      elapsed[THREADS];
+    std::vector<perf_histogram>                 histograms(THREADS);
 
     for (int i=0; i < THREADS; i++) {
         new (&(histograms[i])) perf_histogram();
@@ -381,14 +381,14 @@ BOOST_AUTO_TEST_CASE(
     test_multi_file_logger_append )
 {
     enum { ITERATIONS = 10 };
-    
+
     {
         unlink(s_filename);
 
         text_file_logger<> l_logger;
 
         for (int k=0; k < 2; k++) {
-            
+
             int ok = l_logger.start(s_filename);
             BOOST_REQUIRE ( ok == 0 );
 
@@ -397,20 +397,20 @@ BOOST_AUTO_TEST_CASE(
 
             l_logger.stop();
         }
-        
+
         std::ifstream file(s_filename, std::ios::in);
         for (int k = 0; k < 2; k++)
             for (int i = 0; i < ITERATIONS; i++) {
                 std::string s;
                 std::getline(file, s);
                 BOOST_REQUIRE( ! file.fail() );
-                
+
                 char buf[256];
                 sprintf(buf, s_str1, i);
                 s += '\n';
                 BOOST_REQUIRE_EQUAL( s, buf );
             }
-        
+
         {
             std::string s;
             std::getline(file, s);
@@ -457,7 +457,7 @@ BOOST_AUTO_TEST_CASE(
     ::unlink(s_filename);
 
     text_file_logger<> l_logger;
-    
+
     int ok = l_logger.start(s_filename);
     BOOST_REQUIRE ( ok == 0 );
 
@@ -475,7 +475,7 @@ BOOST_AUTO_TEST_CASE(
 
     int MAX = threads;
     int cur_count[MAX];
-    
+
     bzero(cur_count, sizeof(cur_count));
 
     std::ifstream file(s_filename, std::ios::in);
@@ -483,7 +483,7 @@ BOOST_AUTO_TEST_CASE(
         std::string s;
         std::getline(file, s);
         BOOST_REQUIRE( ! file.fail() );
-        
+
         size_t n1 = s.find_first_of('|');
         BOOST_REQUIRE( n1 != std::string::npos );
 

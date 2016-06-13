@@ -50,8 +50,14 @@ using namespace utxx;
 
 BOOST_AUTO_TEST_CASE( test_time_val )
 {
+    time_val now0;
+
+    BOOST_REQUIRE(!now0);
+
     time_val now  = now_utc();
     time_val now1 = time_val::universal_time();
+
+    BOOST_REQUIRE(now);
 
     while (now.microseconds() == time_val::universal_time().microseconds());
 
@@ -128,6 +134,10 @@ BOOST_AUTO_TEST_CASE( test_time_val )
         t -= secs(1);
         BOOST_CHECK_EQUAL(13123100, t.microseconds());
         t -= usecs(100);
+        BOOST_CHECK_EQUAL(13123000, t.microseconds());
+        t += msecs(15);
+        BOOST_CHECK_EQUAL(13138000, t.microseconds());
+        t -= msecs(15);
         BOOST_CHECK_EQUAL(13123000, t.microseconds());
 
         t = usecs(1123000);
@@ -207,6 +217,32 @@ BOOST_AUTO_TEST_CASE( test_time_val )
         auto tv3 = tv0 + tv1;
         BOOST_CHECK_EQUAL(tv2.sec(),  tv3.sec());
         BOOST_CHECK_EQUAL(tv2.msec(), tv3.msec());
+    }
+
+    {
+        BOOST_REQUIRE_EQUAL("00123", detail::itoar(123, 5));
+        BOOST_REQUIRE_EQUAL("3",     detail::itoar(123, 1));
+        BOOST_REQUIRE_EQUAL("",      detail::itoar(123, 0));
+
+        auto t = utxx::time_val::universal_time(2000, 1, 2, 3, 4, 5, 1000);
+        BOOST_REQUIRE_EQUAL("", t.to_string(utxx::NO_TIMESTAMP));
+        BOOST_REQUIRE_EQUAL("20000102-03:04:05.001000", t.to_string(utxx::DATE_TIME_WITH_USEC));
+        BOOST_REQUIRE_EQUAL("20000102-03:04:05",        t.to_string(utxx::DATE_TIME));
+        BOOST_REQUIRE_EQUAL("2000-01-02-03:04:05",      t.to_string(utxx::DATE_TIME, '-'));
+        BOOST_REQUIRE_EQUAL("20000102-030405",          t.to_string(utxx::DATE_TIME, '\0', '\0'));
+        BOOST_REQUIRE_EQUAL("20000102-03:04:05.001",    t.to_string(utxx::DATE_TIME_WITH_MSEC));
+        BOOST_REQUIRE_EQUAL("03:04:05",                 t.to_string(utxx::TIME));
+        BOOST_REQUIRE_EQUAL("03:04:05.001",             t.to_string(utxx::TIME_WITH_MSEC));
+        BOOST_REQUIRE_EQUAL("03:04:05.001000",          t.to_string(utxx::TIME_WITH_USEC));
+    }
+
+    {
+        time_val tv1; tv1.nanoseconds(1453768119042798821);
+        time_val tv2; tv2.nanoseconds(1453768061796270822);
+        BOOST_CHECK(tv1 >= tv2);
+        BOOST_CHECK(tv1.nanoseconds() >= tv2.nanoseconds());
+        BOOST_CHECK(tv1 > tv2);
+        BOOST_CHECK(tv1.nanoseconds() >  tv2.nanoseconds());
     }
 }
 

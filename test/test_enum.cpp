@@ -30,6 +30,9 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 ***** END LICENSE BLOCK *****
 */
+#include <boost/version.hpp>
+#if (BOOST_VERSION >= 105700)
+
 #include <boost/test/unit_test.hpp>
 #include <utxx/enum.hpp>
 #include <utxx/enumx.hpp>
@@ -42,7 +45,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 UTXX_ENUMX
 (mm_enumx0, char, ' ',
     (A,  'a')
-    (BB, 'b')
+    (Bb, 'b')
     (CCC)
 );
 
@@ -122,6 +125,9 @@ BOOST_AUTO_TEST_CASE( test_enum )
         BOOST_CHECK_EQUAL("B", val.to_string());
         std::stringstream s; s << mm_enum::to_string(val);
         BOOST_CHECK_EQUAL("B", s.str());
+
+        auto val1 = mm_enumx0::from_string("Bb", true);
+        BOOST_CHECK_EQUAL('b', (char)val1);
     }
 
     {
@@ -220,7 +226,7 @@ BOOST_AUTO_TEST_CASE( test_enumx )
     {
         // Iterate over all enum values defined in mm_enum type:
         std::stringstream s;
-        mm_enumx::for_each([&s](mm_enumx e) {
+        mm_enumx::for_each([&s](mm_enumx e, std::string const& name) {
             s << e;
             return true;
         });
@@ -390,3 +396,5 @@ BOOST_AUTO_TEST_CASE( test_enum_flags_old )
     v.clear(my_flags::C | my_flags::E);
     BOOST_CHECK(v == my_flags::B);
 }
+
+#endif

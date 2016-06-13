@@ -38,7 +38,11 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 #include <utxx/logger.hpp>
 #include <utxx/logger/logger_crash_handler.hpp>
+<<<<<<< HEAD
 
+=======
+#include <utxx/signal_block.hpp>
+>>>>>>> upstream/master
 #include <sys/syscall.h>
 #include <csignal>
 #include <cstring>
@@ -70,27 +74,6 @@ namespace utxx {
 
 namespace {
 
-    const char* signal_name(int a_signo)
-    {
-    #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__)
-        static const buf[128];
-        switch(a_signo)
-        {
-            case SIGABRT: return "SIGABRT"; break;
-            case SIGFPE:  return "SIGFPE";  break;
-            case SIGSEGV: return "SIGSEGV"; break;
-            case SIGILL:  return "SIGILL";  break;
-            case SIGTERM: return "SIGTERM"; break;
-            default:
-                sprintf(buf, "UNDEFINED(%d)", a_signo);
-                return buf;
-                break;
-        }
-    #else
-        return strsignal(a_signo);
-    #endif
-    }
-
     // Dump of stack,. then exit through g2log background worker
     // ALL thanks to this thread at StackOverflow. Pretty much borrowed from:
     // Ref: http://stackoverflow.com/questions/77005/how-to-generate-a-stacktrace-when-my-gcc-c-app-crashes
@@ -104,8 +87,14 @@ namespace {
         size_t size = backtrace(dump, max_dump_size);
         char** msg  = backtrace_symbols(dump, size); // overwrite sigaction with caller's address
 
+<<<<<<< HEAD
         oss << "Received fatal signal: " << signal_name(a_signo)
             << " (" << a_signo << ")\n"  << "\tPID: " << syscall(SYS_gettid) << std::endl;
+=======
+        oss << "Received fatal signal: " << sig_name(a_signo)
+            << " (" << a_signo << ")\n"  << "\tPID: " << getpid()
+            << "\tTID: "       << syscall(SYS_gettid) << std::endl;
+>>>>>>> upstream/master
 
         // dump stack: skip first frame, since that is here
         for(size_t idx = 1; idx < size && msg != nullptr; ++idx)
@@ -153,12 +142,16 @@ namespace {
         UTXX_LOG_FATAL(
             "\n\n***** FATAL TRIGGER RECEIVED ******* \n"
             "%s\n\n***** RETHROWING SIGNAL %s (%d)\n",
+<<<<<<< HEAD
             oss.str().c_str(), signal_name(a_signo), a_signo);
 
         while(true)
         {
             ::usleep(10000);
         }
+=======
+            oss.str().c_str(), sig_name(a_signo), a_signo);
+>>>>>>> upstream/master
     }
 
 } // end anonymous namespace
@@ -202,20 +195,25 @@ namespace detail {
 
 } // namespace detail
 
+<<<<<<< HEAD
 void install_sighandler(bool a_install)
+=======
+
+bool install_sighandler(bool a_install, const sigset_t* a_signals)
+>>>>>>> upstream/master
 {
     static std::atomic<bool> s_installed;
 
     // Don't install anything if the handlers are already installed
     if (!a_install || s_installed.exchange(true))
-        return;
+        return false;
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__)
-    if (SIG_ERR == signal(SIGABRT, crase_handler)) perror("signal - SIGABRT");
-    if (SIG_ERR == signal(SIGFPE,  crase_handler)) perror("signal - SIGFPE");
-    if (SIG_ERR == signal(SIGSEGV, crase_handler)) perror("signal - SIGSEGV");
-    if (SIG_ERR == signal(SIGILL,  crase_handler)) perror("signal - SIGILL");
-    if (SIG_ERR == signal(SIGTERM, crase_handler)) perror("signal - SIGTERM");
+    if (SIG_ERR == signal(SIGABRT, crash_handler)) perror("signal - SIGABRT");
+    if (SIG_ERR == signal(SIGFPE,  crash_handler)) perror("signal - SIGFPE");
+    if (SIG_ERR == signal(SIGSEGV, crash_handler)) perror("signal - SIGSEGV");
+    if (SIG_ERR == signal(SIGILL,  crash_handler)) perror("signal - SIGILL");
+    if (SIG_ERR == signal(SIGTERM, crash_handler)) perror("signal - SIGTERM");
 #else
     struct sigaction action;
     memset(&action, 0, sizeof(action));
@@ -226,11 +224,20 @@ void install_sighandler(bool a_install)
     action.sa_flags = SA_SIGINFO;
 
     // do it verbose style - install all signal actions
-    if (sigaction(SIGABRT, &action, NULL) < 0)  perror("sigaction - SIGABRT");
-    if (sigaction(SIGFPE,  &action, NULL) < 0)  perror("sigaction - SIGFPE");
-    if (sigaction(SIGILL,  &action, NULL) < 0)  perror("sigaction - SIGILL");
-    if (sigaction(SIGSEGV, &action, NULL) < 0)  perror("sigaction - SIGSEGV");
-    if (sigaction(SIGTERM, &action, NULL) < 0)  perror("sigaction - SIGTERM");
+    static const sigset_t s_default =
+        sig_init_set(SIGABRT, SIGFPE, SIGILL, SIGSEGV, SIGTERM);
+
+    if (!a_signals)
+        a_signals = &s_default;
+
+    if (sigisemptyset(a_signals))
+        return false;
+
+    for (uint i=1; i < sig_names_count(); ++i)
+        if (sigismember(a_signals, i) && sigaction(i, &action, nullptr) < 0)
+            UTXX_THROW_IO_ERROR(errno, "Error in sigaction - ", sig_name(i));
+
+    return true;
 #endif
 }
 

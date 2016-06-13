@@ -82,12 +82,12 @@ constexpr int as_int() {
 /// Function to map log_level into range [1 ... 10].
 /// Same as the static version above, but usable at run-time
 inline int as_int(log_level L) {
-    int level = ffs(L);
+    int level = __builtin_ffs(L);
     return 11 - (level > 10 ? 10 : level);
 };
 
 /// Function to map an integer in range [1 ... 10] to log_level [WARNING ... TRACE5].
-inline int as_log_level(uint8_t a) {
+inline log_level as_log_level(uint8_t a) {
     uint8_t i = 10 - (a > 10 ? 10 : a);
     return log_level(i < 5 ? (1 << 5 | 1 << i) : 1 << i);
 }

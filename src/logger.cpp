@@ -43,11 +43,14 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 #include <utxx/logger/logger.hpp>
 #include <utxx/logger/logger_crash_handler.hpp>
 #include <utxx/logger/logger_impl.hpp>
+#include <utxx/signal_block.hpp>
 #include <utxx/variant_tree_parser.hpp>
+#include <utxx/logger/generated/logger_options.generated.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/xpressive/xpressive.hpp>
 #include <boost/thread/locks.hpp>
 #include <stdio.h>
+#include <stdlib.h>
 
 #if DEBUG_ASYNC_LOGGER == 2
 #   define ASYNC_DEBUG_TRACE(x) do { printf x; fflush(stdout); } while(0)
@@ -62,23 +65,25 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 namespace utxx {
 
-std::string logger::log_levels_to_str(int a_levels) noexcept
+std::string logger::log_levels_to_str(uint32_t a_levels) noexcept
 {
     std::stringstream s;
     bool l_empty = true;
-    for (int i = LEVEL_TRACE; i <= LEVEL_LOG; i <<= 1)
-        if (i & a_levels) {
+    for (uint32_t i = 1; i <= LEVEL_LOG; i <<= 1) {
+        auto level = i < LEVEL_TRACE ? (i | LEVEL_TRACE) : i;
+        if  ((level & a_levels) == level) {
             s << (l_empty ? "" : "|")
-              << log_level_to_str(static_cast<log_level>(i));
+              << log_level_to_string(static_cast<log_level>(level), false);
             l_empty = false;
         }
+    }
     return s.str();
 }
 
 const std::string& logger::log_level_to_abbrev(log_level level) noexcept
 {
     static const std::string s_levels[] = {
-        "T", "D", "I", "N", "W", "E", "F", "A", "L"
+        "T", "D", "I", "N", "W", "E", "F", "A", "L", " "
     };
 
     switch (level) {
@@ -96,23 +101,29 @@ const std::string& logger::log_level_to_abbrev(log_level level) noexcept
         case LEVEL_FATAL    : return s_levels[6];
         case LEVEL_ALERT    : return s_levels[7];
         case LEVEL_LOG      : return s_levels[8];
-        default             : assert(false);
+        default             : break;
     }
+    assert(false);
+    return s_levels[9];
 }
 
-const std::string& logger::log_level_to_string(log_level level) noexcept
+const std::string& logger::log_level_to_string(log_level lvl, bool merge_trace) noexcept
 {
-    static const std::string s_levels[] = {
-        "TRACE",   "DEBUG", "INFO",  "NOTICE",
-        "WARNING", "ERROR", "FATAL", "ALERT", "LOG"
+    static const std::string s_traces[] = {
+        "TRACE1", "TRACE2", "TRACE3", "TRACE4", "TRACE5"
     };
 
-    switch (level) {
-        case LEVEL_TRACE5   :
-        case LEVEL_TRACE4   :
-        case LEVEL_TRACE3   :
-        case LEVEL_TRACE2   :
-        case LEVEL_TRACE1   :
+    static const std::string s_levels[] = {
+        "TRACE",   "DEBUG", "INFO",  "NOTICE",
+        "WARNING", "ERROR", "FATAL", "ALERT", "LOG", "NONE"
+    };
+
+    switch (lvl) {
+        case LEVEL_TRACE5   : return merge_trace ? s_levels[0] : s_traces[4];
+        case LEVEL_TRACE4   : return merge_trace ? s_levels[0] : s_traces[3];
+        case LEVEL_TRACE3   : return merge_trace ? s_levels[0] : s_traces[2];
+        case LEVEL_TRACE2   : return merge_trace ? s_levels[0] : s_traces[1];
+        case LEVEL_TRACE1   : return merge_trace ? s_levels[0] : s_traces[0];
         case LEVEL_TRACE    : return s_levels[0];
         case LEVEL_DEBUG    : return s_levels[1];
         case LEVEL_INFO     : return s_levels[2];
@@ -122,8 +133,10 @@ const std::string& logger::log_level_to_string(log_level level) noexcept
         case LEVEL_FATAL    : return s_levels[6];
         case LEVEL_ALERT    : return s_levels[7];
         case LEVEL_LOG      : return s_levels[8];
-        default             : assert(false);
+        default             : break;
     }
+    assert(false);
+    return s_levels[9];
 }
 
 size_t logger::log_level_size(log_level level) noexcept
@@ -143,8 +156,10 @@ size_t logger::log_level_size(log_level level) noexcept
         case LEVEL_FATAL    :
         case LEVEL_ALERT    : return 5;
         case LEVEL_LOG      : return 3;
-        default             : assert(false);
+        default             : break;
     }
+    assert(false);
+    return 0;
 }
 
 int logger::level_to_signal_slot(log_level level) noexcept
@@ -164,8 +179,11 @@ int logger::level_to_signal_slot(log_level level) noexcept
         case LEVEL_FATAL    : return 6;
         case LEVEL_ALERT    : return 7;
         case LEVEL_LOG      : return 8;
-        default             : assert(false);
+        default             : break;
     }
+    assert(false);
+    return 0;
+
 }
 
 log_level logger::signal_slot_to_level(int slot) noexcept
@@ -179,11 +197,14 @@ log_level logger::signal_slot_to_level(int slot) noexcept
         case 5: return LEVEL_ERROR;
         case 6: return LEVEL_FATAL;
         case 7: return LEVEL_ALERT;
-        default: assert(false);
+        default: break;
     }
+    assert(false);
+    return LEVEL_NONE;
 }
 
 const char* logger::default_log_levels = "INFO|NOTICE|WARNING|ERROR|ALERT|FATAL";
+std::atomic<sigset_t*> logger::m_crash_sigset;
 
 void logger::add_macro(const std::string& a_macro, const std::string& a_value)
 {
@@ -194,7 +215,7 @@ std::string logger::replace_macros(const std::string& a_value) const
 {
     using namespace boost::posix_time;
     using namespace boost::xpressive;
-    sregex re = "$(" >> (s1 = +_w) >> ')';
+    sregex re = "{{" >> (s1 = +_w) >> "}}";
     auto replace = [this](const smatch& what) {
         auto it = this->m_macro_var_map.find(what[1].str());
         return it == this->m_macro_var_map.end()
@@ -203,14 +224,14 @@ std::string logger::replace_macros(const std::string& a_value) const
     return regex_replace(a_value, re, replace);
 }
 
-void logger::init(const char* filename)
+void logger::init(const char* filename, const sigset_t* a_ignore_signals)
 {
     config_tree pt;
     read_config(filename, pt);
     init(pt);
 }
 
-void logger::init(const config_tree& a_cfg)
+void logger::init(const config_tree& a_cfg, const sigset_t* a_ignore_signals)
 {
     if (m_initialized)
         throw std::runtime_error("Logger already initialized!");
@@ -222,24 +243,47 @@ void logger::init(const config_tree& a_cfg)
         m_show_location  = a_cfg.get<bool>       ("logger.show-location", m_show_location);
         m_show_fun_namespaces = a_cfg.get<int>   ("logger.show-fun-namespaces",
                                                   m_show_fun_namespaces);
+        m_show_category  = a_cfg.get<bool>       ("logger.show-category", m_show_category);
         m_show_ident     = a_cfg.get<bool>       ("logger.show-ident",    m_show_ident);
+        m_show_thread    = a_cfg.get<bool>       ("logger.show-thread",   m_show_thread);
         m_ident          = a_cfg.get<std::string>("logger.ident",         m_ident);
+        m_ident          = replace_macros(m_ident);
         std::string ts   = a_cfg.get<std::string>("logger.timestamp",     "time-usec");
         m_timestamp_type = parse_stamp_type(ts);
+        std::string levs = a_cfg.get<std::string>("logger.levels", "");
+        if (!levs.empty())
+            set_level_filter(static_cast<log_level>(parse_log_levels(levs)));
         std::string ls   = a_cfg.get<std::string>("logger.min-level-filter", "info");
-        set_min_level_filter(static_cast<log_level>(parse_log_levels(ls)));
-        long timeout_ms  = a_cfg.get<int>        ("logger.wait-timeout-ms", 2000);
-        m_silent_finish  = a_cfg.get<bool>       ("logger.silent-finish",  false);
+        if (!levs.empty() && !ls.empty())
+            std::runtime_error
+                ("Either 'levels' or 'min-level-filter' option is permitted!");
+        set_min_level_filter(parse_log_level(ls));
+        long timeout_ms  = a_cfg.get<int>        ("logger.wait-timeout-ms", 1000);
         m_wait_timeout   = timespec{timeout_ms / 1000, timeout_ms % 1000 * 1000000L};
-        m_use_sched_yield= a_cfg.get<bool>       ("logger.use-sched-yield", true);
+        m_sched_yield_us = a_cfg.get<long>       ("logger.sched-yield-us", -1);
+        m_silent_finish  = a_cfg.get<bool>       ("logger.silent-finish",  false);
 
         if ((int)m_timestamp_type < 0)
             throw std::runtime_error("Invalid timestamp type: " + ts);
 
         // Install crash signal handlers
         // (SIGABRT, SIGFPE, SIGILL, SIGSEGV, SIGTERM)
-        if (a_cfg.get("logger.handle-crash-signals", true))
-            install_sighandler(true);
+        if (a_cfg.get("logger.handle-crash-signals", true)) {
+            sigset_t sset = sig_members_parse
+                (a_cfg.get("logger.handle-crash-signals.signals",""), UTXX_SRC);
+
+            // Remove signals from the sset that are handled externally
+            if (a_ignore_signals)
+                for (uint i=1; i < sig_names_count(); ++i)
+                    if (sigismember(a_ignore_signals, i))
+                        sigdelset(&sset, i);
+
+            if (install_sighandler(true, &sset)) {
+                auto old = m_crash_sigset.exchange(new sigset_t(sset));
+                if (!old)
+                    delete old;
+            }
+        }
 
         //logger_impl::msg_info info(NULL, 0);
         //query_timestamp(info);
@@ -300,6 +344,9 @@ void logger::run()
     if (m_on_before_run)
         m_on_before_run();
 
+    if (!m_ident.empty())
+        pthread_setname_np(pthread_self(), m_ident.c_str());
+
     int event_val = 1;
     while (!m_abort)
     {
@@ -319,9 +366,9 @@ void logger::run()
 
         // When running with maximum priority, occasionally excessive use of
         // sched_yield may use to system slowdown, so this option is
-        // configurable by m_use_sched_yield:
-        if (m_queue.empty() && m_use_sched_yield) {
-            time_val deadline(rel_time(0, 250));
+        // configurable by m_sched_yield_us:
+        if (m_queue.empty() && m_sched_yield_us >= 0) {
+            time_val deadline(rel_time(0, m_sched_yield_us));
             while (m_queue.empty()) {
                 if (m_abort)
                     goto DONE;
@@ -389,6 +436,9 @@ DONE:
 
 void logger::finalize()
 {
+    if (!m_initialized)
+        return;
+
     std::lock_guard<std::mutex> g(m_mutex);
     m_abort = true;
     if (m_thread)
@@ -406,6 +456,10 @@ void logger::do_finalize()
     for(auto& impl : m_implementations)
         impl.reset();
     m_implementations.clear();
+
+    auto sset = m_crash_sigset.exchange(nullptr);
+    if  (sset)
+        delete sset;
 }
 
 char* logger::
@@ -427,9 +481,20 @@ format_header(const logger::msg& a_msg, char* a_buf, const char* a_end)
         p = stpncpy(p, ident().c_str(), ident().size());
         *p++ = '|';
     }
-    if (!a_msg.m_category.empty())
-        p = stpncpy(p, a_msg.m_category.c_str(), a_msg.m_category.size());
-    *p++ = '|';
+    if (show_thread()) {
+        char thread_name[33];
+        if (pthread_getname_np(a_msg.m_thread_id, thread_name, sizeof(thread_name)) < 0) {
+            char* p = thread_name;
+            itoa(a_msg.m_thread_id, p, 10);
+        }
+        p = stpcpy(p, thread_name);
+        *p++ = '|';
+    }
+    if (show_category()) {
+        if (!a_msg.m_category.empty())
+            p = stpncpy(p, a_msg.m_category.c_str(), a_msg.m_category.size());
+        *p++ = '|';
+    }
     return p;
 }
 
@@ -443,12 +508,14 @@ format_footer(const logger::msg& a_msg, char* a_buf, const char* a_end)
     // Timestamp|Level|Ident|Category|Message|File:Line FunName\n
     if (a_msg.src_loc_len() && show_location() && likely(a_buf + n < a_end)) {
         if (*(p-1) == '\n') p--;
-        *p++ =  '|';
+        *p++ = ' ';
+        *p++ = '[';
 
         p = src_info::to_string(p, a_end - p,
                 a_msg.src_location(), a_msg.src_loc_len(),
                 a_msg.src_fun_name(), a_msg.src_fun_len(),
                 show_fun_namespaces());
+        *p++ = ']';
     }
 
     // We reached the end of the streaming sequence:
@@ -494,7 +561,11 @@ void logger::dolog_msg(const logger::msg& a_msg) {
                 auto qs = q - sfx;
                 buf.reserve(a_msg.m_fun.str.size() + ps + qs + 1);
                 buf.sprint(pfx, ps);
-                buf.print(a_msg.m_fun.str);
+                auto& s = a_msg.m_fun.str;
+                // Remove trailing new lines
+                auto sz = s.size();
+                while (sz && s[sz-1] == '\n') --sz;
+                buf.sprint(s.c_str(), sz);
                 buf.sprint(sfx, qs);
                 m_sig_slot[level_to_signal_slot(a_msg.level())](
                     on_msg_delegate_t::invoker_type(a_msg, buf.str(), buf.size()));
@@ -568,30 +639,41 @@ int logger::parse_log_levels(const std::string& a_levels)
         boost::algorithm::token_compress_on);
     int result = LEVEL_NONE;
     for (std::vector<std::string>::iterator it=str_levels.begin();
-        it != str_levels.end(); ++it) {
-        boost::to_upper(*it);
-        if (*it == "WIRE")
-            *it = "DEBUG";  // Backward compatibility
-        if (*it == "NONE" || *it == "FALSE") {
-            result  = LEVEL_NONE;
-            break;
-        }
-        else if (*it == "TRACE")   result |= LEVEL_TRACE;
-        else if (*it == "TRACE1")  result |= LEVEL_TRACE | LEVEL_TRACE1;
-        else if (*it == "TRACE2")  result |= LEVEL_TRACE | LEVEL_TRACE2;
-        else if (*it == "TRACE3")  result |= LEVEL_TRACE | LEVEL_TRACE3;
-        else if (*it == "TRACE4")  result |= LEVEL_TRACE | LEVEL_TRACE4;
-        else if (*it == "TRACE5")  result |= LEVEL_TRACE | LEVEL_TRACE5;
-        else if (*it == "DEBUG")   result |= LEVEL_DEBUG;
-        else if (*it == "INFO")    result |= LEVEL_INFO;
-        else if (*it == "NOTICE")  result |= LEVEL_NOTICE;
-        else if (*it == "WARNING") result |= LEVEL_WARNING;
-        else if (*it == "ERROR")   result |= LEVEL_ERROR;
-        else if (*it == "FATAL")   result |= LEVEL_FATAL;
-        else if (*it == "ALERT")   result |= LEVEL_ALERT;
-        else throw std::runtime_error(std::string("Invalid log level: ") + *it);
-    }
+        it != str_levels.end(); ++it)
+        result |= parse_log_level(*it);
     return result;
+}
+
+log_level logger::parse_log_level(const std::string& a_level)
+    throw(std::runtime_error)
+{
+    if (a_level.empty()) return LEVEL_NONE;
+
+    auto s = boost::to_upper_copy(a_level);
+    if (s == "WIRE")     return LEVEL_DEBUG;  // Backward compatibility
+    if (s == "NONE" ||
+        s == "FALSE")    return LEVEL_NONE;
+    if (s == "TRACE")    return LEVEL_TRACE;
+    if (s == "TRACE1")   return log_level(LEVEL_TRACE | LEVEL_TRACE1);
+    if (s == "TRACE2")   return log_level(LEVEL_TRACE | LEVEL_TRACE2);
+    if (s == "TRACE3")   return log_level(LEVEL_TRACE | LEVEL_TRACE3);
+    if (s == "TRACE4")   return log_level(LEVEL_TRACE | LEVEL_TRACE4);
+    if (s == "TRACE5")   return log_level(LEVEL_TRACE | LEVEL_TRACE5);
+    if (s == "DEBUG")    return LEVEL_DEBUG;
+    if (s == "INFO")     return LEVEL_INFO;
+    if (s == "NOTICE")   return LEVEL_NOTICE;
+    if (s == "WARNING")  return LEVEL_WARNING;
+    if (s == "ERROR")    return LEVEL_ERROR;
+    if (s == "FATAL")    return LEVEL_FATAL;
+    if (s == "ALERT")    return LEVEL_ALERT;
+    try   { auto n = std::stoi(s); return as_log_level(n); }
+    catch (...) {}
+    throw std::runtime_error("Invalid log level: " + a_level);
+}
+
+int logger::parse_min_log_level(const std::string& a_level) throw(std::runtime_error) {
+    auto     ll = uint32_t(parse_log_level(a_level));
+    return static_cast<uint32_t>(~(ll ? (1u << __builtin_ffs(ll))-1 : 0u));
 }
 
 void logger::set_level_filter(log_level a_level) {
@@ -599,7 +681,7 @@ void logger::set_level_filter(log_level a_level) {
 }
 
 void logger::set_min_level_filter(log_level a_level) {
-    uint32_t n = (uint32_t)a_level ? (1u << bits::bit_scan_forward(a_level)) - 1 : 0u;
+    uint32_t n = (uint32_t)a_level ? (1u << __builtin_ffs(a_level)) - 1 : 0u;
     m_level_filter = static_cast<uint32_t>(~n);
 }
 
@@ -615,14 +697,17 @@ void logger::remove(log_level a_lvl, int a_id)
 
 std::ostream& logger::dump(std::ostream& out) const
 {
+    auto val = [](bool a) { return a ? "true" : "false"; };
     std::stringstream s;
     s   << "Logger settings:\n"
-        << "    level-filter        = " << log_levels_to_str(m_level_filter) << '\n'
-        << "    show-location       = " << (m_show_location ? "true" : "false") << '\n'
-        << "    show-fun-namespaces = " << m_show_fun_namespaces << '\n'
-        << "    show-ident          = " << (m_show_ident    ? "true" : "false") << '\n'
-        << "    ident               = " << m_ident << '\n'
-        << "    timestamp-type      = " << to_string(m_timestamp_type) << '\n';
+        << "    level-filter        = " << boost::to_upper_copy
+                                    (log_levels_to_str(m_level_filter)) << '\n'
+        << "    show-location       = " << val(m_show_location)         << '\n'
+        << "    show-fun-namespaces = " << m_show_fun_namespaces        << '\n'
+        << "    show-ident          = " << val(m_show_ident)            << '\n'
+        << "    show-thread         = " << val(m_show_thread)           << '\n'
+        << "    ident               = " << m_ident                      << '\n'
+        << "    timestamp-type      = " << to_string(m_timestamp_type)  << '\n';
 
     // Check the list of registered implementations. If corresponding
     // configuration section is found, initialize the implementation.

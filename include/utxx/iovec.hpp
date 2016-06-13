@@ -112,8 +112,8 @@ public:
                 m_length -= p->iov_len, a_bytes -= p->iov_len,
                         m_begin = ++p) {}
         if (a_bytes) {
-            m_begin->iov_len  -= a_bytes;
-            m_begin->iov_base += a_bytes;
+            m_begin->iov_len -= a_bytes;
+            m_begin->iov_base = (char*)m_begin->iov_base + a_bytes;
         }
     }
 
@@ -127,7 +127,9 @@ public:
     /// @return -1 if a_size is insufficient to copy data to, or else the
     ///            length of copied data.
     int copy_to(char *a_buf, size_t a_size) const {
-        const char *begin = a_buf;
+#ifndef NDEBUG
+        const char* begin = a_buf;
+#endif
         if (a_size < m_length)
             return -1;
         for (const iovec *p = m_begin; p < m_end; a_buf += p->iov_len, p++)

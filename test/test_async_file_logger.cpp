@@ -91,7 +91,7 @@ BOOST_AUTO_TEST_CASE( test_async_file_logger_perf )
             perf.start();
             int n = logger.fwrite(s_str1, i);
             perf.stop();
-            BOOST_CHECK(n > 0);
+            BOOST_REQUIRE(n > 0);
         }
 
         perf.dump(std::cout);
@@ -111,7 +111,7 @@ BOOST_AUTO_TEST_CASE( test_async_file_logger_append )
         for (int k=0; k < 2; k++) {
 
             int ok = logger.start(s_filename);
-            BOOST_CHECK_EQUAL(0, ok);
+            BOOST_REQUIRE_EQUAL(0, ok);
 
             for (int i = 0; i < ITERATIONS; i++) {
                 int n = logger.fwrite(s_str1, i);
@@ -126,7 +126,7 @@ BOOST_AUTO_TEST_CASE( test_async_file_logger_append )
             for (int i = 0; i < ITERATIONS; i++) {
                 std::string s;
                 std::getline(file, s);
-                BOOST_CHECK(!file.fail());
+                BOOST_REQUIRE(!file.fail());
 
                 char buf[256];
                 sprintf(buf, s_str1, i);
@@ -196,8 +196,8 @@ BOOST_AUTO_TEST_CASE( test_async_file_logger_concurrent )
     perf_histogram totals("Total async_file_logger performance");
 
     {
-        std::unique_ptr<std::thread> threads[nthreads];
-        perf_histogram               histograms[nthreads];
+        std::vector<std::unique_ptr<std::thread>> threads(nthreads);
+        std::vector<perf_histogram>               histograms(nthreads);
         for (int i=0; i < nthreads; i++)
             threads[i].reset
                 (new std::thread(producer(logger, i+1, ITERATIONS, &histograms[i])));
@@ -219,13 +219,13 @@ BOOST_AUTO_TEST_CASE( test_async_file_logger_concurrent )
 
     int cur_count[nthreads];
 
-    bzero(cur_count, sizeof(cur_count));
+    bzero(cur_count, sizeof(int)*nthreads);
 
     std::ifstream file(s_filename, std::ios::in);
     for (int i = 0; i < ITERATIONS*nthreads; i++) {
         std::string s;
         std::getline(file, s);
-        BOOST_CHECK( ! file.fail() );
+        BOOST_REQUIRE( ! file.fail() );
 
         size_t n1 = s.find_first_of('|');
         BOOST_CHECK( n1 != std::string::npos );

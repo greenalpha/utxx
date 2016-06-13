@@ -6,8 +6,12 @@
                 desc="Max number of namespaces included in printing function names.\n
                       0 - no function name is printed. 1 - function name is printed\n
                       without namespaces."/>
+        <option name="show-category" val-type="bool" default="true"
+                desc="When true message category is added to output lines"/>
         <option name="show-ident" val-type="bool" default="false"
                 desc="When true logger's ident property is added to output lines"/>
+        <option name="show-thread" val-type="bool" default="false"
+                desc="When true logging thread identifier of a message is added to output lines"/>
         <option name="ident" val-type="string" default=""
                 desc="Process's identifier (can use env variables in the name)"/>
         <option name="timestamp" val-type="string" default="time-usec"
@@ -22,8 +26,11 @@
             <value val="date-time-usec" desc="YYYYmmdd-HH:MM:DD.ssssss"/>
         </option>
 
+        <option name="levels" val-type="string" default=""
+                desc="Mask (delimiter: ' |,;') that specifies minimum severity of messages to log (def: '')"/>
+
         <option name="min-level-filter" val-type="string" default="info"
-                desc="Mask (delimiter: ' |,;') that specifies minimum severity of messages to log">
+                desc="Minimum severity of messages to log (use ether this one or the 'levels' option)">
             <value val="false"/>
             <value val="none"/>
             <value val="trace"/>
@@ -33,6 +40,7 @@
             <value val="trace4"/>
             <value val="trace5"/>
             <value val="debug"/>
+            <value val="notice"/>
             <value val="info"/>
             <value val="warning"/>
             <value val="error"/>
@@ -40,15 +48,23 @@
             <value val="alert"/>
         </option>
 
-        <option name="handle-crash-signals" val-type="bool" default="true"
-                desc="When true logger installs signal handlers for \n
-                      SIGABRT, SIGFPE, SIGILL, SIGSEGV, SIGTERM"/>
+        <option name="wait-timeout-ms" val-type="int" default="1000"
+                desc="Wait for this number of milliseconds before checking queue of\n
+                      pending log messages (def: 1000)"/>
+
+        <option name="sched-yield-us" val-type="int" default="100"
+                desc="Use sched_yield() call in a loop for this number of microseconds\n
+                      before sleeping for wait-timeout-ms (def: 100)"/>
 
         <option name="silent-finish" val-type="bool" default="false"
                 desc="When true logger doesn't write completion status to log at termination"/>
 
-        <option name="use-sched-yield" val-type="bool" default="true"
-                desc="Use sched_yield() calls for more prompt detection of pending unwritten data"/>
+        <option name="handle-crash-signals" val-type="bool" default="true"
+                desc="When true logger installs signal handlers">
+            <option name="signals" val-type="string"
+                    default="SIGABRT|SIGFPE|SIGILL|SIGSEGV|SIGTERM"
+                    desc="Pipe/comma-delimitted list of signal handlers"/>
+        </option>
 
         <option name="file" required="false"
                 desc="Logger's backend for writing data synchronously to file">
@@ -58,6 +74,8 @@
                     desc="If true the log file is open in the appending mode"/>
             <option name="mode" val-type="int" default="0644"
                     desc="Octal file access mask"/>
+            <option name="symlink"   type="string" required="false"
+                    desc="Symbolic link to the log file"/>
             <option name="levels" val-type="string" default="info|warning|error|alert|fatal"
                     desc="Filter of log severity levels to be saved">
                 <copy path="../../../option[@name = 'min-level-filter']/value"/>
@@ -68,13 +86,6 @@
                     desc="Overrides logger.show-indent option"/>
             <option name="no-header" val-type="bool" default="false"
                     desc="When enabled, no field definition header is written to file at startup"/>
-        </option>
-
-        <option name="async-file" required="false"
-                desc="Logger's backend for writing data asynchronously to file">
-            <copy path="../../option[@name = 'file']/*"/>
-            <option name="timeout" val-type="int" default="1000"
-                    desc="Backend's number of idling milliseconds"/>
         </option>
 
         <option name="scribe" required="false"
@@ -95,12 +106,18 @@
 
         <option name="console" required="false"
                 desc="logger's backend for writing messages to console">
-            <option name="stdout-levels" val-type="string"
-                    desc="Filter of log severity levels to print to stdout">
+            <option name="stdout-levels" val-type="string" default="notice|info|warning"
+                    desc="Filter of log severity levels to print to stdout"/>
+            <option name="stderr-levels" val-type="string" default="error|fatal|alert"
+                    desc="Filter of log severity levels to print to stderr"/>
+            <option name="min-stdout-level" val-type="string" default="notice"
+                    desc="Minimum severity of messages to log to stdout\n
+                          (this option overrides stdout-levels)">
                 <copy path="../../../option[@name = 'min-level-filter']/value"/>
             </option>
-            <option name="stderr-levels" val-type="string" default="error|fatal|alert"
-                    desc="Filter of log severity levels to print to stderr">
+            <option name="min-stderr-level" val-type="string" default="notice"
+                    desc="Minimum severity of messages to log to stderr\n
+                          (this option overrides stderr-levels)">
                 <copy path="../../../option[@name = 'min-level-filter']/value"/>
             </option>
             <option name="show-location" val-type="bool" default="false"

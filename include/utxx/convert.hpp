@@ -30,9 +30,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 ***** END LICENSE BLOCK *****
 */
-
-#ifndef _UTXX_ATOI_HPP_
-#define _UTXX_ATOI_HPP_
+#pragma once
 
 #include <limits>
 #include <string.h>
@@ -44,12 +42,11 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 #include <stdexcept>
 #include <utxx/meta.hpp>
 #include <utxx/bits.hpp>
+#include <utxx/types.hpp>
 #include <utxx/compiler_hints.hpp>
 #include <stdint.h>
 
 namespace utxx {
-
-enum alignment { LEFT, RIGHT };
 
 namespace detail {
     static inline const char int_to_char(int n) {
@@ -962,13 +959,14 @@ inline void ftoa_right(double f, char* buffer, int width, int precision, char lp
         if (neg)
             *(--p) = '-';
     } else {
-        char* end = p;
+        //char* end = p;
         while (int_part) {
             int j = int_part / 10;
             *(--p) = (char)(int_part - ((j << 3) + (j << 1)) + '0');
             int_part = j;
         }
         /* Reverse string */
+        /*
         int wid = end - p;
         for (int i = 0, n = wid >> 1; i < n; i++) {
             int64_t j = wid - i - 1;
@@ -976,6 +974,7 @@ inline void ftoa_right(double f, char* buffer, int width, int precision, char lp
             buffer[i] = buffer[j];
             buffer[j] = c;
         }
+        */
         if (neg)
             *(--p) = '-';
     }
@@ -987,6 +986,8 @@ inline void ftoa_right(double f, char* buffer, int width, int precision, char lp
 
 //--------------------------------------------------------------------------------
 /// Parses floating point numbers with fixed number of decimal digits from string.
+/// @return pointer past the last successfully parsed character or \a p if
+/// nothing was parsed.
 //
 // atof:
 //      09-May-2009 Tom Van Baak (tvb) www.LeapSecond.com
@@ -1102,5 +1103,3 @@ inline std::string itoa_hex(T a) {
 }
 
 } // namespace utxx
-
-#endif // _UTXX_ATOI_HPP_

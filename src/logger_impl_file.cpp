@@ -37,6 +37,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 #include <fcntl.h>
 #include <utxx/logger/logger_impl_file.hpp>
 #include <utxx/logger/logger_impl.hpp>
+#include <utxx/path.hpp>
 #include <boost/thread.hpp>
 
 namespace utxx {
@@ -50,8 +51,10 @@ std::ostream& logger_impl_file::dump(std::ostream& out,
     out << a_prefix << "logger." << name() << '\n'
         << a_prefix << "    filename       = " << m_filename << '\n'
         << a_prefix << "    append         = " << (m_append ? "true" : "false")       << '\n'
-        << a_prefix << "    mode           = " << m_mode << '\n'
-        << a_prefix << "    levels         = " << logger::log_levels_to_str(m_levels) << '\n'
+        << a_prefix << "    mode           = " << m_mode << '\n';
+    if (!m_symlink.empty()) out <<
+           a_prefix << "    symlink        = " << m_symlink << '\n';
+    out << a_prefix << "    levels         = " << logger::log_levels_to_str(m_levels) << '\n'
         << a_prefix << "    use-mutex      = " << (m_use_mutex ? "true" : "false")    << '\n'
         << a_prefix << "    no-header      = " << (m_no_header ? "true" : "false")    << '\n';
     return out;
@@ -65,8 +68,7 @@ bool logger_impl_file::init(const variant_tree& a_config)
 
     try {
         m_filename = a_config.get<std::string>("logger.file.filename");
-        if (m_log_mgr)
-            m_filename = m_log_mgr->replace_macros(m_filename);
+        m_filename = m_log_mgr->replace_macros(m_filename);
     } catch (boost::property_tree::ptree_bad_data&) {
         throw badarg_error("logger.file.filename not specified");
     }
@@ -76,18 +78,35 @@ bool logger_impl_file::init(const variant_tree& a_config)
     // thread safety.  Mutex is enabled by default in the overwrite mode (i.e. "append=false").
     // Use the "use-mutex=false" option to inhibit this behavior if your
     // platform has thread-safe write(2) call.
-    m_use_mutex     = m_append ? false : a_config.get("logger.file.use-mutex", true);
+    m_use_mutex     = !m_append || a_config.get("logger.file.use-mutex", true);
     m_no_header     = a_config.get("logger.file.no-header", false);
-    m_mode          = a_config.get("logger.file.mode", 0644);
-    m_levels        = logger::parse_log_levels(
-        a_config.get<std::string>("logger.file.levels", logger::default_log_levels));
+    m_mode          = a_config.get("logger.file.mode",       0644);
+    m_symlink       = a_config.get("logger.file.symlink",      "");
+    auto levels     = a_config.get("logger.file.levels",       "");
+
+    m_levels = levels.empty()
+             ? m_log_mgr->level_filter()
+             : logger::parse_log_levels(levels);
+
+    if (__builtin_ffs(m_levels) < __builtin_ffs(m_log_mgr->level_filter()))
+        UTXX_THROW_RUNTIME_ERROR("File logger's levels filter '", levels,
+                                 "' is less granular that logger's default '",
+                                 logger::log_levels_to_str(m_log_mgr->min_level_filter()));
 
     if (m_levels != NOLOGGING) {
+        bool exists = path::file_exists(m_filename);
         m_fd = open(m_filename.c_str(),
                     O_CREAT|O_WRONLY|O_LARGEFILE | (m_append ? O_APPEND : 0),
                     m_mode);
         if (m_fd < 0)
-            throw io_error(errno, "Error opening file", m_filename);
+            UTXX_THROW_IO_ERROR(errno, "Error opening file ", m_filename);
+
+        if (!m_symlink.empty()) {
+            m_symlink = m_log_mgr->replace_macros(m_symlink);
+            if (!utxx::path::file_symlink(m_filename, m_symlink, true))
+                UTXX_THROW_IO_ERROR(errno, "Error creating symlink ", m_symlink,
+                                    " -> ", m_filename, ": ");
+        }
 
         // Write field information
         if (!m_no_header) {
@@ -96,22 +115,32 @@ bool logger_impl_file::init(const variant_tree& a_config)
 
             tzset();
 
+            auto ll = m_log_mgr->log_level_to_string
+                        (as_log_level(__builtin_ffs(m_levels)), false);
             int  tz = -timezone;
-            int  hh = tz / 3600;
-            int  mm = tz % 60;
-            p += snprintf(p, p - end, "# Logging started at: %s %c%02d:%02d\n#",
+            int  hh = abs(tz / 3600);
+            int  mm = abs(tz % 60);
+            p += snprintf(p, p - end, "# Logging started at: %s %c%02d:%02d (MinLevel: %s)\n#",
                           timestamp::to_string(DATE_TIME).c_str(),
-                          tz > 0 ? '+' : '-', hh, mm);
-            if (!this->m_log_mgr ||
-                this->m_log_mgr->timestamp_type() != stamp_type::NO_TIMESTAMP)
-                p += snprintf(p, p - end, "Timestamp|");
-            p += snprintf(p, p - end, "Level|");
-            if (this->m_log_mgr && this->m_log_mgr->show_ident())
-                p += snprintf(p, p - end, "Ident|");
-            p += snprintf(p, p - end, "Category|Message");
-            if (this->m_log_mgr && this->m_log_mgr->show_location())
-                p += snprintf(p, p - end, "File:Line%s",
-                              this->m_log_mgr->show_fun_namespaces() ? " Function" : "");
+                          tz > 0 ? '+' : '-', hh, mm, ll.c_str());
+            if (!exists) {
+                if (!this->m_log_mgr ||
+                    this->m_log_mgr->timestamp_type() != stamp_type::NO_TIMESTAMP)
+                    p += snprintf(p, p - end, "Timestamp|");
+                p += snprintf(p, p - end, "Level|");
+                if (this->m_log_mgr) {
+                    if (this->m_log_mgr->show_ident())
+                        p += snprintf(p, p - end, "Ident|");
+                    if (this->m_log_mgr->show_thread())
+                        p += snprintf(p, p - end, "Thread|");
+                    if (this->m_log_mgr->show_category())
+                    p += snprintf(p, p - end, "Category|");
+                }
+                p += snprintf(p, p - end, "Message");
+                if (this->m_log_mgr && this->m_log_mgr->show_location())
+                    p += snprintf(p, p - end, " [File:Line%s]",
+                                this->m_log_mgr->show_fun_namespaces() ? " Function" : "");
+            }
             *p++ = '\n';
 
             if (write(m_fd, buf, p - buf) < 0)

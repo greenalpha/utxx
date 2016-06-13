@@ -1,19 +1,18 @@
 //----------------------------------------------------------------------------
-/// \file stream64.cpp
+/// \file   test_compiler_hints.cpp
 /// \author Serge Aleynikov
 //----------------------------------------------------------------------------
-/// Instantiation of input/output streams that can be used to read/write files
-/// larger than 4Gb.
+/// \brief Test cases for compiler_hints macros.
 //----------------------------------------------------------------------------
-// Copyright (C) 2010 Serge Aleynikov <saleyn@gmail.com>
-// Created: 2010-06-21
+// Copyright (c) 2014 Serge Aleynikov <saleyn@gmail.com>
+// Created: 2014-09-31
 //----------------------------------------------------------------------------
 /*
 ***** BEGIN LICENSE BLOCK *****
 
-This file is a part of utxx open-source project.
+This file is part of the utxx open-source project.
 
-Copyright (C) 2010 Serge Aleynikov <saleyn@gmail.com>
+Copyright (C) 2014 Serge Aleynikov <saleyn@gmail.com>
 
 This library is free software; you can redistribute it and/or
 modify it under the terms of the GNU Lesser General Public
@@ -32,13 +31,19 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 ***** END LICENSE BLOCK *****
 */
 
-#include <utxx/io/stream64.hpp>
+#include <boost/test/unit_test.hpp>
+#include <utxx/compiler_hints.hpp>
+#include <iostream>
 
-namespace utxx {
-namespace io   {
-
-    template class basic_ifstream64<char>;
-    template class basic_ofstream64<char>;
-
-}
+BOOST_AUTO_TEST_CASE( test_compiler_hints )
+{
+    BOOST_CHECK(LIKELY(1));
+    BOOST_CHECK(UNLIKELY(1));
+    BOOST_CHECK(utxx::likely(1));
+    BOOST_CHECK(utxx::unlikely(1));
+    bool res;
+    res = UTXX_CHECK(1, true); BOOST_CHECK(res);
+    BOOST_CHECK( UTXX_CHECK(0, true));
+    BOOST_CHECK(!UTXX_CHECK(1, false));
+    BOOST_CHECK(!UTXX_CHECK(0, false));
 }

@@ -33,6 +33,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 #pragma once
 
 #include <exception>
+#include <algorithm>
 #include <memory>
 #include <sstream>
 #include <iostream>
@@ -112,12 +113,22 @@ namespace utxx {
 #define UTXX_THROW_NOT_IMPLEMENTED() \
     UTXX_SRC_THROW(utxx::runtime_error, UTXX_SRC, "Method not implemented!")
 
+/// Guard expression with a try/catch, and throw utxx::runtime_error on exception
+#define UTXX_RETHROW(Expr) \
+    try { (Expr); } \
+    catch (utxx::runtime_error const& e) { throw; } \
+    catch (std::exception      const& e) { UTXX_THROW_RUNTIME_ERROR(e.what()); }
+
 namespace utxx {
 
 /// Thread-safe function returning error string.
-static inline std::string errno_string(int a_errno) {
+inline std::string errno_string(int a_errno) {
+    // Note: GNU-specific implementation is thread-safe, and strerror_r doesn't
+    // really use the given char buffer, so we chose to call strerror():
     return strerror(a_errno);
 }
+
+inline std::string errno_string() { return errno_string(errno); }
 
 class not_implemented : public std::exception {
 public:
@@ -327,11 +338,13 @@ public:
             int tribrcnt = 0, scope = 1;
             struct { const char* l; const char* r; } tribraces[N];
             const char* scopes[N];
+            scopes[0] = "";
             auto begin = a_srcfun;
             auto matched_open_tribrace = -1;
             auto inside = 0;  // > 0 when we are inside "<...>"
             if (strncmp(begin, "static ",   7)==0) begin += 7;
             if (strncmp(begin, "typename ", 9)==0) begin += 9;
+            //
             // We search for '(' to signify the end of input, and skip
             // everything prior to the last space:
             for (q = begin, e = q + a_sf_len; q < e; ++q) {
@@ -339,12 +352,27 @@ public:
                     case '(':
                         if (inside)
                             continue;
+                        // This is a rare lambda case, e.g.:
+                        //      xxx::(anonymous class)::yyy()
+                        // replace with "<lambda>" scope
+                        if (strncmp(q+1, "anonymous class)", std::min<int>(16,e-q-1)) == 0 && scope<N) {
+                            q += 16;
+                            continue;
+                        }
+                        // This is an operator() case, e.g.:
+                        //      xxx::operator()(const char*)
+                        // Preserve first set of "()"
+                        if (strncmp(scopes[scope-1], "operator", 8) == 0 && *(q+1) == ')') {
+                            q++;
+                            continue;
+                        }
                         e = q;
                         break;
                     case ' ':
                         if (inside)
                             continue;
-                        begin    = q+1;
+                        while (*(++q) == '*' || *q == '&');
+                        begin    = q;
                         scope    = 1;
                         tribrcnt = 0;
                         break;
@@ -499,6 +527,7 @@ public:
     virtual ~runtime_error() throw() {}
 
     const src_info& src() const { return m_sinfo; }
+    src_info&&      src()       { return std::move(m_sinfo); }
 };
 
 /**

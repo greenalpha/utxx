@@ -29,8 +29,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 ***** END LICENSE BLOCK *****
 */
-#ifndef _UTXX_PATH_IPP_
-#define _UTXX_PATH_IPP_
+#pragma once
 
 #include <utxx/path.hpp>
 #include <sys/stat.h>
@@ -90,6 +89,37 @@ inline std::string file_readlink(const std::string& a_symlink) {
     return std::string(buf, n < 0 ? 0 : n);
 }
 
+inline bool file_symlink(const std::string& a_file, const std::string& a_link, bool a_verify) {
+
+    if (a_verify) {
+        if (a_link.empty() || !path::file_exists(a_file))
+            return false;
+
+        if (a_link == a_file)
+            return true;
+
+        // Does a file by name a_link exist and it's not a symlink?
+        if (file_exists(a_link)) {
+            if (!is_symlink(a_link)) {
+                auto new_name = a_link + ".tmp";
+                if (file_exists(new_name) && !file_unlink(new_name))
+                    return false;
+                if (!file_rename(a_link, new_name))
+                    return false;
+            } else {
+                // Check if the symlink already points to existing file named a_file
+                auto s = file_readlink(a_link);
+                if (s == a_file)
+                    return true;
+                utxx::path::file_unlink(a_link);
+            }
+        }
+
+    }
+
+    return ::symlink(a_file.c_str(), a_link.c_str()) == 0;
+}
+
 inline long file_size(const char* a_filename) {
     struct stat stat_buf;
     int rc = stat(a_filename, &stat_buf);
@@ -102,7 +132,51 @@ inline long file_size(int fd) {
     return rc == 0 ? stat_buf.st_size : -1;
 }
 
+inline int file_exists(const char* a_path) {
+    #if defined(_MSC_VER) || defined(_WIN32) || defined(__CYGWIN32__)
+    std::ifstream l_stream;
+    l_stream.open(a_path, std::ios_base::in);
+    if(l_stream.is_open()) {
+        l_stream.close();
+        return true;
+    }
+    return false;
+    #else
+    struct stat buf;
+    return ::lstat(a_path, &buf) < 0 ? 0 : buf.st_mode;
+    #endif
+}
+
+inline bool create_directories(const std::string& a_path, int a_access) {
+    if (a_path.empty())
+        return false;
+
+    std::string s(a_path);
+    if (s[s.size()-1] == '/')
+        s.erase(s.size()-1);
+
+    size_t n = 0, i;
+    while ((i = s.find('/', n)) != std::string::npos) {
+        n = i+1;
+        if (i == 0)
+            continue;
+        auto dir  = s.substr(0, i);
+        auto mode = file_exists(dir.c_str());
+        if (S_ISDIR(mode))
+            continue;
+        else if (S_ISREG(mode))
+            return false;
+        else if (!mode && mkdir(dir.c_str(), a_access) < 0)
+            return false;
+    }
+
+    return file_exists(s) || mkdir(s.c_str(), a_access) >= 0;
+}
+
+inline std::string username() {
+    char buf[L_cuserid];
+    return unlikely(cuserid(buf) == nullptr) ? buf : "";
+}
+
 } // namespace path
 } // namespace utxx
-
-#endif // _UTXX_PATH_IPP_

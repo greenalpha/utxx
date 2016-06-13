@@ -57,12 +57,21 @@ bool logger_impl_console::init(const variant_tree& a_config)
     BOOST_ASSERT(this->m_log_mgr);
 
     ptree::const_assoc_iterator it;
-    m_color         = a_config.get("logger.console.color", true);
-    std::string s   = a_config.get("logger.console.stdout-levels", "");
-    m_stdout_levels = !s.empty() ? logger::parse_log_levels(s) : s_def_stdout_levels;
+    m_color          = a_config.get("logger.console.color", true);
+    auto smin_stdout = a_config.get("logger.console.min-stdout-level", "");
+    auto smin_stderr = a_config.get("logger.console.min-stderr-level", "");
+    int  min_stdout  = logger::parse_min_log_level(smin_stdout);
+    int  min_stderr  = logger::parse_min_log_level(smin_stderr);
+    auto so          = a_config.get("logger.console.stdout-levels", "");
+    auto se          = a_config.get("logger.console.stderr-levels", "");
 
-    s = a_config.get("logger.console.stderr-levels", "");
-    m_stderr_levels = !s.empty() ? logger::parse_log_levels(s) : s_def_stderr_levels;
+    m_stdout_levels  = !smin_stdout.empty() ? min_stdout                   :
+                       !so.empty()          ? logger::parse_log_levels(so) :
+                       s_def_stdout_levels;
+
+    m_stderr_levels  = !smin_stderr.empty() ? min_stderr                   :
+                       !se.empty()          ? logger::parse_log_levels(se) :
+                       s_def_stderr_levels;
 
     int all_levels = m_stdout_levels | m_stderr_levels;
     for(int lvl = 0; lvl < logger::NLEVELS; ++lvl) {
@@ -71,6 +80,9 @@ bool logger_impl_console::init(const variant_tree& a_config)
             this->add(level, logger::on_msg_delegate_t::from_method
                     <logger_impl_console, &logger_impl_console::log_msg>(this));
     }
+
+    m_stdout_is_tty = isatty(fileno(stdout));
+    m_stderr_is_tty = m_stdout_is_tty && isatty(fileno(stderr));
     return true;
 }
 
@@ -78,12 +90,10 @@ void logger_impl_console::log_msg(
     const logger::msg& a_msg, const char* a_buf, size_t a_size) throw(io_error)
 {
     if (a_msg.level() & m_stdout_levels) {
-        bool color = m_color && isatty(fileno(stdout));
-        colorize(a_msg.level(), color, std::cout, std::string(a_buf, a_size));
+        colorize(a_msg.level(), m_stdout_is_tty, std::cout, std::string(a_buf, a_size));
         std::flush(std::cout);
     } else if (a_msg.level() & m_stderr_levels) {
-        bool color = m_color && isatty(fileno(stderr));
-        colorize(a_msg.level(), color, std::cerr, std::string(a_buf, a_size));
+        colorize(a_msg.level(), m_stderr_is_tty, std::cerr, std::string(a_buf, a_size));
     }
 }
 
@@ -95,10 +105,11 @@ void logger_impl_console::colorize
     static const char MAGENTA[]= "\E[1;35;40m";
     static const char NORMAL[] = "\E[0m";
 
-    if (!a_color || a_ll <  LEVEL_WARNING) out << a_str;
-    else if        (a_ll <= LEVEL_WARNING) out << YELLOW  << a_str << NORMAL;
-    else if        (a_ll >= LEVEL_FATAL)   out << MAGENTA << a_str << NORMAL;
-    else if        (a_ll >= LEVEL_ERROR)   out << RED     << a_str << NORMAL;
+    auto color = m_color && a_color;
+    if (!color || a_ll <  LEVEL_WARNING) out << a_str;
+    else if      (a_ll <= LEVEL_WARNING) out << YELLOW  << a_str << NORMAL;
+    else if      (a_ll >= LEVEL_FATAL)   out << MAGENTA << a_str << NORMAL;
+    else if      (a_ll >= LEVEL_ERROR)   out << RED     << a_str << NORMAL;
 }
 
 

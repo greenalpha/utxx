@@ -213,7 +213,8 @@ public:
     /// automatically crunched by the read() call without releasing allocated memory.
     void wr_lwm(size_t a_lwm) {
         if (a_lwm > max_size())
-            throw std::runtime_error("io_buffer: low watermark too large!");
+            UTXX_THROW_RUNTIME_ERROR
+                ("Low watermark ", a_lwm, " too large (max=", max_size(), ")!");
         m_wr_lwm = a_lwm;
     }
 
@@ -223,10 +224,10 @@ public:
     ///         value preceeding the increment of its position by \a n.
     /// @param n is the number of bytes to read.
     char* read(int n) {
-        if (unlikely((size_t)n > size()))
+        if (UNLIKELY((size_t)n > size()))
             return NULL;
         char* p = m_rd_ptr;
-        if (likely(n)) {
+        if (LIKELY(n)) {
             m_rd_ptr += n;
             BOOST_ASSERT(m_rd_ptr <= m_wr_ptr);
         }
@@ -239,7 +240,7 @@ public:
     /// @returns -1 if there is not enough data in the buffer 
     ///         to read \a n bytes.
     int read_and_crunch(int n) {
-        if (unlikely(read(n) == NULL))
+        if (UNLIKELY(read(n) == NULL))
             return -1;
         if (capacity() < m_wr_lwm)
             crunch();
@@ -268,7 +269,7 @@ public:
             return;
         size_t sz = size();
         if (sz) {
-            if (unlikely(m_begin + sz > m_rd_ptr)) // overlap of memory block
+            if (UNLIKELY(m_begin + sz > m_rd_ptr)) // overlap of memory block
                 memmove(m_begin, m_rd_ptr, sz);
             else
                 memcpy(m_begin, m_rd_ptr, sz);

@@ -29,8 +29,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 ***** END LICENSE BLOCK *****
 */
-#ifndef _UTXX_PATH_HPP_
-#define _UTXX_PATH_HPP_
+#pragma once
 
 #include <string>
 #include <list>
@@ -85,8 +84,9 @@ std::string basename(const std::string& a_file, const std::string& a_strip_ext =
 std::string dirname(const std::string& a_filename);
 
 /// Checks if a file exists
-bool        file_exists(const char* a_path);
-inline bool file_exists(const std::string& a) { return file_exists(a.c_str()); }
+/// @return 0 if file doesn't exist, or file's stat.st_mode otherwise
+int         file_exists(const char* a_path);
+inline int  file_exists(const std::string& a) { return file_exists(a.c_str()); }
 
 /// Check if given path is a symlink
 bool        is_symlink (const char* a_path);
@@ -111,9 +111,15 @@ inline long file_size(const std::string& a_filename) { return file_size(a_filena
 long        file_size(int fd);
 
 /// Create a symlink to file
-inline bool file_symlink(const std::string& a_file, const std::string& a_symlink) {
-    return ::symlink(a_file.c_str(), a_symlink.c_str()) == 0;
-}
+/// @param a_file    target file
+/// @param a_symlink link to create
+/// @param a_verify  when true, causes the function to ensure that given
+///                  \a a_symlink points to \a a_file. If the the given
+///                  symlink is actually an existing file, the file is renamed
+///                  to a_symlink+".tmp". If the given symlink exists, and points
+///                  to a file other than \a a_file, the symlink is replaced
+///                  with value pointing to \a a_file.
+bool file_symlink(const std::string& a_file, const std::string& a_symlink, bool a_verify=false);
 
 /// Removes a file
 bool        file_unlink(const char* a_path);
@@ -123,6 +129,9 @@ inline bool file_unlink(const std::string& a_path) { return file_unlink(a_path.c
 inline bool file_rename(const std::string& a_from, const std::string& a_to) {
     return ::rename(a_from.c_str(), a_to.c_str()) == 0;
 }
+
+/// Create nested directories (similar to mkdir -p)
+bool        create_directories(const std::string& a_path, int a_access = 0750);
 
 /// Get current working directory
 inline std::string curdir() { char buf[512]; getcwd(buf,sizeof(buf)); return buf; }
@@ -154,7 +163,7 @@ inline bool write_file(const std::string& a_file, std::string&& a_data, bool a_a
 
 /// Split \a a_path to directory and filename
 inline std::pair<std::string, std::string> split(std::string const& a_path) {
-    auto found = a_path.find_last_of(slash());
+    auto found = a_path.rfind(slash());
     return found == std::string::npos
          ? std::make_pair("", a_path)
          : std::make_pair(a_path.substr(0, found), a_path.substr(found+1));
@@ -207,6 +216,10 @@ inline list_files(std::string const& a_dir_with_file_mask,
 
 /// Return portable value of the home path
 std::string home();
+
+/// Location of the temp directory (e.g. "/tmp")
+/// @param a_filename file name to append to temp directory name
+std::string temp_path(std::string const& a_filename = "");
 
 /// @brief Substitute all environment variables and day-time
 /// formatting symbols (see strptime(3)) in a given filename.
@@ -301,4 +314,3 @@ public:
 } // namespace utxx
 
 #include <utxx/path.ipp>
-#endif // _UTXX_PATH_HPP_

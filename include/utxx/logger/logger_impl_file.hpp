@@ -66,9 +66,9 @@ class logger_impl_file: public logger_impl {
     std::string  m_name;
     std::string  m_filename;
     bool         m_append;
+    std::string  m_symlink;
     bool         m_use_mutex;
-    bool         m_timestamp;
-    int          m_levels;
+    uint32_t     m_levels;
     mode_t       m_mode;
     int          m_fd;
     boost::mutex m_mutex;
@@ -76,7 +76,7 @@ class logger_impl_file: public logger_impl {
 
     logger_impl_file(const char* a_name)
         : m_name(a_name), m_append(true), m_use_mutex(false)
-        , m_timestamp(true), m_levels(LEVEL_NO_DEBUG)
+        , m_levels(LEVEL_NO_DEBUG)
         , m_mode(0644), m_fd(-1), m_no_header(false)
     {}
 

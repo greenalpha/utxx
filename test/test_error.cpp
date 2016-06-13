@@ -31,6 +31,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
 #include <utxx/error.hpp>
+#include <utxx/string.hpp>
 #include <boost/test/unit_test.hpp>
 #include <regex>
 #include <type_traits>
@@ -39,35 +40,51 @@ using namespace utxx;
 
 const src_info& sample_src() { static const auto s_src = UTXX_SRC; return s_src; }
 
-namespace abc { namespace d {
-    struct EventType {
-        enum etype { a,b,c };
-    };
-
-    template <class T>
-    struct A {
-
-        template <EventType::etype ET>
-        struct ChannelEvent {};
-
-        template <EventType::etype ET>
-        static typename std::enable_if<ET == EventType::a ||
-                                ET == EventType::b ||
-                                ET == EventType::c, const src_info&>::type
-        OnData(const ChannelEvent<ET>& a) {
-            static const auto s_src = UTXX_SRC; return s_src;
+namespace abc {
+    namespace d   {
+        struct EventType {
+            enum etype { a,b,c };
         };
 
-        template <class U, class V>
-        struct B {
-            static const src_info& my_fun() { static const auto s_src = UTXX_SRC; return s_src; }
-            static const src_info& my_funx() {
-                UTXX_PRETTY_FUNCTION();
-                static const auto s_src = UTXX_SRCX; return s_src;
-            }
+        template <class T>
+        struct A {
+
+            template <EventType::etype ET>
+            struct ChannelEvent {};
+
+            template <EventType::etype ET>
+            static typename std::enable_if<ET == EventType::a ||
+                                    ET == EventType::b ||
+                                    ET == EventType::c, const src_info&>::type
+            OnData(const ChannelEvent<ET>& a) {
+                static const auto s_src = UTXX_SRC; return s_src;
+            };
+
+            template <class U, class V>
+            struct B {
+                static const src_info& my_fun() { static const auto s_src = UTXX_SRC; return s_src; }
+                static const src_info& my_funx() {
+                    UTXX_PRETTY_FUNCTION();
+                    static const auto s_src = UTXX_SRCX; return s_src;
+                }
+            };
         };
-    };
-}}
+    } // namespace d
+
+    static const src_info* test_static(std::string const&) {
+        static const auto s_src = UTXX_SRC;
+        return &s_src;
+    }
+
+    static src_info lambda(utxx::src_info&& a_src) {
+        return a_src;
+    }
+
+    static src_info do_lambda() {
+        auto fun = [](){ return lambda(UTXX_SRC); };
+        return fun();
+    }
+} // namespace abc
 
 BOOST_AUTO_TEST_CASE( test_error )
 {
@@ -120,6 +137,12 @@ BOOST_AUTO_TEST_CASE( test_error )
         BOOST_REQUIRE(std::regex_search(std::string(e.what()), re));
         BOOST_REQUIRE(!e.src().empty());
     }
+
+    try {
+        UTXX_RETHROW(throw std::runtime_error("Test"));
+    } catch (utxx::runtime_error const& e) {
+        BOOST_REQUIRE_EQUAL("Test", e.str());
+    }
 }
 
 BOOST_AUTO_TEST_CASE( test_error_srcloc )
@@ -157,7 +180,7 @@ BOOST_AUTO_TEST_CASE( test_error_srcloc )
             abc::d::A<int>::B<bool,double>::my_fun(),
             abc::d::A<int>::B<bool,double>::my_funx()
         };
-        for (int i=0; i < 2; ++i) {
+        for (auto i=0u; i < length(src); ++i) {
             auto str = src[i].to_string();
             std::regex re("test_error.cpp:\\d+ A::B::my_fun[x]?$");
             if (!std::regex_search(str, re)) {
@@ -165,7 +188,7 @@ BOOST_AUTO_TEST_CASE( test_error_srcloc )
                 BOOST_CHECK(false);
             }
         }
-        for (int i=0; i < 2; ++i) {
+        for (auto i=0u; i < length(src); ++i) {
             auto str = src[i].to_string("", "", 3);
             std::regex re("test_error.cpp:\\d+ A::B::my_fun[x]?$");
             if (!std::regex_search(str, re)) {
@@ -173,7 +196,7 @@ BOOST_AUTO_TEST_CASE( test_error_srcloc )
                 BOOST_CHECK(false);
             }
         }
-        for (int i=0; i < 2; ++i) {
+        for (auto i=0u; i < length(src); ++i) {
             auto str = src[i].to_string("", "", 10);
             std::regex re(i==0 ? "test_error.cpp:\\d+ abc::d::A::B::my_fun$"
                                : "test_error.cpp:\\d+ A::B::my_funx$");
@@ -182,7 +205,7 @@ BOOST_AUTO_TEST_CASE( test_error_srcloc )
                 BOOST_CHECK(false);
             }
         }
-        for (int i=0; i < 2; ++i) {
+        for (auto i=0u; i < length(src); ++i) {
             auto str = src[i].to_string("", "", 0);
             std::regex re("^test_error.cpp:\\d+$");
             if (!std::regex_search(str, re)) {
@@ -202,6 +225,50 @@ BOOST_AUTO_TEST_CASE( test_error_srcloc )
             // 1 is overriden by 3:
             str = src[1].to_string("", "", 1);
             re  = "^test_error.cpp:\\d+ A::B::my_fun[x]?$";
+            if (!std::regex_search(str, re)) {
+                std::cout << '"' << str << '"' << std::endl;
+                BOOST_CHECK(false);
+            }
+        }
+
+        {
+            auto* si = abc::test_static("");
+            auto str = si->to_string("", "", 3);
+            std::regex re("^test_error.cpp:\\d+ abc::test_static$");
+            if (!std::regex_search(str, re)) {
+                std::cout << '"' << str << '"' << std::endl;
+                BOOST_CHECK(false);
+            }
+
+            auto sii = abc::do_lambda();
+            str = sii.to_string("", "", 3);
+            re  = std::regex("^test_error.cpp:\\d+ abc::do_lambda$");
+            if (!std::regex_search(str, re)) {
+                std::cout << '"' << str << '"' << std::endl;
+                BOOST_CHECK(false);
+            }
+
+            src_info ci
+            (
+                UTXX_FILE_SRC_LOCATION,
+                "auto mqt::(anonymous class)::operator()(const std::string &) const"
+            );
+            str = ci.to_string("", "", 3);
+            re  = std::regex("^test_error.cpp:\\d+ mqt::\\(anonymous class\\)::operator\\(\\)$");
+            if (!std::regex_search(str, re)) {
+                std::cout << '"' << str << '"' << std::endl;
+                BOOST_CHECK(false);
+            }
+        }
+
+        {
+            src_info ci
+            (
+                UTXX_FILE_SRC_LOCATION,
+                "auto main(int, char **)::(anonymous class)::operator()(io::FdInfo &, int, int) const"
+            );
+            auto str = ci.to_string("", "", 3);
+            auto re  = std::regex("^test_error.cpp:\\d+ main$");
             if (!std::regex_search(str, re)) {
                 std::cout << '"' << str << '"' << std::endl;
                 BOOST_CHECK(false);
