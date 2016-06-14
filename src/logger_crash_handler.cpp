@@ -38,11 +38,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 #include <utxx/logger.hpp>
 #include <utxx/logger/logger_crash_handler.hpp>
-<<<<<<< HEAD
-
-=======
 #include <utxx/signal_block.hpp>
->>>>>>> upstream/master
 #include <sys/syscall.h>
 #include <csignal>
 #include <cstring>
@@ -87,14 +83,9 @@ namespace {
         size_t size = backtrace(dump, max_dump_size);
         char** msg  = backtrace_symbols(dump, size); // overwrite sigaction with caller's address
 
-<<<<<<< HEAD
-        oss << "Received fatal signal: " << signal_name(a_signo)
-            << " (" << a_signo << ")\n"  << "\tPID: " << syscall(SYS_gettid) << std::endl;
-=======
         oss << "Received fatal signal: " << sig_name(a_signo)
             << " (" << a_signo << ")\n"  << "\tPID: " << getpid()
             << "\tTID: "       << syscall(SYS_gettid) << std::endl;
->>>>>>> upstream/master
 
         // dump stack: skip first frame, since that is here
         for(size_t idx = 1; idx < size && msg != nullptr; ++idx)
@@ -142,16 +133,7 @@ namespace {
         UTXX_LOG_FATAL(
             "\n\n***** FATAL TRIGGER RECEIVED ******* \n"
             "%s\n\n***** RETHROWING SIGNAL %s (%d)\n",
-<<<<<<< HEAD
-            oss.str().c_str(), signal_name(a_signo), a_signo);
-
-        while(true)
-        {
-            ::usleep(10000);
-        }
-=======
             oss.str().c_str(), sig_name(a_signo), a_signo);
->>>>>>> upstream/master
     }
 
 } // end anonymous namespace
@@ -195,12 +177,7 @@ namespace detail {
 
 } // namespace detail
 
-<<<<<<< HEAD
-void install_sighandler(bool a_install)
-=======
-
 bool install_sighandler(bool a_install, const sigset_t* a_signals)
->>>>>>> upstream/master
 {
     static std::atomic<bool> s_installed;
 
