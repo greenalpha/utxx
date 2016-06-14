@@ -177,6 +177,7 @@ namespace detail {
 
 } // namespace detail
 
+
 bool install_sighandler(bool a_install, const sigset_t* a_signals)
 {
     static std::atomic<bool> s_installed;
