@@ -32,7 +32,7 @@ if("${toolchain}" STREQUAL "gcc")
   add_definitions(-Wno-strict-aliasing -fopenmp -Wall)
 
   if("${CMAKE_BUILD_TYPE}" STREQUAL "release")
-    add_definitions(-flto -funroll-loops -fomit-frame-pointer)
+    add_definitions(-funroll-loops -fomit-frame-pointer)
 
     # The following will omit all symbol information from the build:
     #add_definitions(-Wl,-s)
