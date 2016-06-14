@@ -1,5 +1,0 @@
-CXX=/opt/rh/devtoolset-3/root/usr/bin/g++ \
-    ./configure \
-    --prefix=/opt/utxx/1.0 \
-    --with-boost=/opt/boost \
-    --enable-optimize
