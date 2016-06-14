@@ -353,9 +353,7 @@ struct logger : boost::noncopyable {
 
         template <class T>
         helper operator<< (T&& a) {
-            char thread_name[64] = {0};
-            pthread_getname_np(pthread_self(), thread_name, sizeof(thread_name));
-            return helper(this) << thread_name << ": " << a;
+            return helper(this) << a;
         }
 
         msg_streamer& operator<<(msg_streamer& (*Manipulator)(msg_streamer&)) {
@@ -403,6 +401,7 @@ private:
     bool                            m_show_thread           = false;
     std::string                     m_ident;
     bool                            m_silent_finish         = false;
+    int                             m_fatal_kill_signal     = 0;
     long                            m_sched_yield_us        = 250;
     macro_var_map                   m_macro_var_map;
 
@@ -542,7 +541,7 @@ public:
     /// @return true if ident logging is enabled by default.
     bool        show_ident()     const { return m_show_ident; }
     /// @return true if thread name logging is enabled.
-    bool        show_thread()    const { return m_show_ident; }
+    bool        show_thread()    const { return m_show_thread; }
     /// @return true if source location display is enabled by default.
     bool        show_location()  const { return m_show_location; }
     /// @return Max depth of function name scope being printed (e.g.
@@ -550,7 +549,8 @@ public:
     ///         1 - function name without namespaces;
     ///         N - include N-1 preceeding namespaces in the name)
     int         show_fun_namespaces()  const { return m_show_fun_namespaces; }
-
+    /// @return log fatal kill signal, 0 is disabled.
+    int         fatal_kill_signal()    const { return m_fatal_kill_signal; }
     /// Get program identifier to be used in the log output.
     const std::string&  ident()  const { return m_ident; }
     /// Set program identifier to be used in the log output.
