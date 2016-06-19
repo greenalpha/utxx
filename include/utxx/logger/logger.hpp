@@ -202,6 +202,7 @@ struct logger : boost::noncopyable {
         const char*   m_src_fun;
         payload_t     m_type;
         pthread_t     m_thread_id;
+        char          m_thread_name[16];
 
         union U {
             char_function  cf;
@@ -231,7 +232,11 @@ struct logger : boost::noncopyable {
             , m_type        (a_type)
             , m_thread_id   (pthread_self())
             , m_fun         (a_fun)
-        {}
+        {
+            if (!logger::instance().show_thread() ||
+                pthread_getname_np(m_thread_id, m_thread_name, sizeof(m_thread_name)) < 0)
+                m_thread_name[0] = '\0';
+        }
 
     public:
 
@@ -437,6 +442,7 @@ private:
     void remove(log_level a_lvl, int a_id);
 
     void dolog_msg(const msg& a_msg);
+    void dolog_fatal_msg(char*  buf);
 
     void run();
 
@@ -552,8 +558,10 @@ public:
     ///         1 - function name without namespaces;
     ///         N - include N-1 preceeding namespaces in the name)
     int         show_fun_namespaces()  const { return m_show_fun_namespaces; }
-    /// @return log fatal kill signal, 0 is disabled.
-    int         fatal_kill_signal()    const { return m_fatal_kill_signal; }
+    /// If set to a non-zero value, the messages of LEVEL_FATAL level will
+    /// cause the logger to terminate process by given signal.
+    /// @return Fatal kill signal number, 0 is disabled.
+    int         fatal_kill_signal()    const { return m_fatal_kill_signal;   }
     /// Get program identifier to be used in the log output.
     const std::string&  ident()  const { return m_ident; }
     /// Set program identifier to be used in the log output.

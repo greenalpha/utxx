@@ -483,12 +483,11 @@ format_header(const logger::msg& a_msg, char* a_buf, const char* a_end)
         *p++ = '|';
     }
     if (show_thread()) {
-        char thread_name[33];
-        if (pthread_getname_np(a_msg.m_thread_id, thread_name, sizeof(thread_name)) < 0) {
-            char* p = thread_name;
-            itoa(a_msg.m_thread_id, p, 10);
+        if (a_msg.m_thread_name[0] == '\0') {
+            char* q = const_cast<char*>(a_msg.m_thread_name);
+            itoa(a_msg.m_thread_id, q, 10);
         }
-        p = stpcpy(p, thread_name);
+        p = stpcpy(p, a_msg.m_thread_name);
         *p++ = '|';
     }
     if (show_category()) {
@@ -571,9 +570,9 @@ void logger::dolog_msg(const logger::msg& a_msg) {
                 buf.sprint(sfx, qs);
                 m_sig_slot[level_to_signal_slot(a_msg.level())](
                     on_msg_delegate_t::invoker_type(a_msg, buf.str(), buf.size()));
-                if( fatal_kill_signal() && a_msg.level() == LEVEL_FATAL) {
-                    dofatal_log(buf.str());
-                }
+
+                if (fatal_kill_signal() && a_msg.level() == LEVEL_FATAL)
+                    dolog_fatal_msg(buf.str());
 
                 break;
             }
@@ -586,23 +585,22 @@ void logger::dolog_msg(const logger::msg& a_msg) {
     }
 }
 
-void logger::dofatal_log(char *buf)
+void logger::dolog_fatal_msg(char* buf)
 {
     // Expecting a Rethrowing signal string of
     // this format
     // (signal number)
 
-    int signum = 6; //DEFAULT SIGNAL SIGABRT
-    char *signo_str = strstr(buf, "(");
+    int   signum    = fatal_kill_signal(); //DEFAULT SIGNAL SIGABRT
+    char* signo_str = strstr(buf, "(");
 
-    if(signo_str)
-    {
+    if (signo_str) {
         signo_str++;
         signum = atoi(signo_str);
 
-        if(signum)
-        {
-            std::cerr << "logger exiting after receiving fatal event "<< signum << std::endl;
+        if (signum) {
+            std::cerr << "logger exiting after receiving fatal event " << signum
+                      << std::endl;
             detail::exit_with_default_sighandler(signum);
             return;
         }
