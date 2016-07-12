@@ -134,6 +134,11 @@ namespace {
             "\n\n***** FATAL TRIGGER RECEIVED ******* \n"
             "%s\n\n***** RETHROWING SIGNAL %s (%d)\n",
             oss.str().c_str(), sig_name(a_signo), a_signo);
+
+        while(true)
+        {
+           ::usleep(10000);
+        }
     }
 
 } // end anonymous namespace

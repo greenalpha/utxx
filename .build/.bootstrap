@@ -1,1 +1,1 @@
-make bootstrap toolchain=gcc build=Debug
+make bootstrap build=Release toolchain=gcc buil=Release
