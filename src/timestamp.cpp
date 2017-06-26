@@ -77,9 +77,8 @@ char* timestamp::write_date(char* a_buf, time_t a_utc_seconds, bool a_utc,
                             size_t eos_pos, char a_sep, bool a_use_cached_date)
 {
     long nsec = a_utc_seconds*1000000000L;
-
     // If not same day - update cached string value
-    if (unlikely(nsec >= s_next_utc_midnight_nseconds))
+    if (unlikely(nsec >= s_next_local_midnight_nseconds))
         update_midnight_nseconds(now_utc());
 
     auto today_utc_midnight = s_next_utc_midnight_nseconds - 86400000000000L;
@@ -171,7 +170,7 @@ int timestamp::format(stamp_type a_tp, time_val tv, char* a_buf, size_t a_sz,
         case DATE_TIME_WITH_MSEC: {
             auto sec = a_utc ? pair.first
                              : (pair.first + s_utc_nsec_offset / 1000000000L);
-            p = write_date(a_buf, pair.first, a_utc, 0, '\0', a_use_cached_date);
+            p = write_date(a_buf, sec, a_utc, 0, '\0', a_use_cached_date);
             p = time_val::write_time(sec, pair.second, p, stamp_type(a_tp+3));
             return p - a_buf;
         }
